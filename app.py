@@ -1,5 +1,6 @@
 import pandas as pd
 import streamlit as st
+from data_preprocessor import preprocess_data
 
 # 1. Page configuration
 st.set_page_config(
@@ -290,7 +291,7 @@ DATA_PATH = "classification-of-area.csv"
 
 @st.cache_data
 def load_data():
-    return pd.read_csv(DATA_PATH)
+    return preprocess_data(pd.read_csv(DATA_PATH))
 
 
 def get_data():
