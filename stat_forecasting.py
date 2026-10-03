@@ -1,9 +1,5 @@
 """
-Statistical analysis and forecasting module
-for the Agricultural Land-Use Analysis project.
-
-This module receives an annual, analysis-ready series
-from data_preprocessor.py and performs:
+Statistical analysis and forecasting module:
 
 1. Descriptive statistics
 2. Trend analysis using SciPy
@@ -14,28 +10,20 @@ from data_preprocessor.py and performs:
 7. Future forecasting using Statsmodels Holt model
 """
 
-# stat_forecasting.py
-
 import pandas as pd
 import numpy as np
-
 from scipy import stats
 from statsmodels.tsa.holtwinters import Holt
 
-
-# ============================================================
 # 1. PREPARE ANNUAL SERIES
-# ============================================================
-
 def prepare_annual_series(data):
     """
-    Prepare yearly data for statistical analysis and forecasting.
-
-    Expected columns:
-        year
-        value
-
-    If multiple rows exist for the same year, their values are summed.
+    Prepare the data so it can be used for statistics and forecasting.
+    The function:
+    - converts year and value into numbers
+    - removes rows with missing year or value
+    - combines values if more than one row exists for a year
+    - sorts the data from oldest year to newest year
     """
 
     df = data.copy()
@@ -56,14 +44,16 @@ def prepare_annual_series(data):
     return annual_data
 
 
-# ============================================================
 # 2. DESCRIPTIVE STATISTICS
-# ============================================================
-
 def descriptive_summary(data):
     """
-    Calculate basic descriptive statistics for the selected
-    annual agricultural metric.
+    Calculate basic descriptive statistics for the selected annual agricultural metric.
+    These values help us understand:
+    - how many years are available
+    - the average value
+    - the middle value
+    - the lowest and highest values
+    - how much the values vary
     """
 
     df = prepare_annual_series(data)
@@ -85,10 +75,6 @@ def descriptive_summary(data):
 
 
 def interpret_descriptive_summary(result):
-    """
-    Convert descriptive statistics into readable findings.
-    """
-
     return (
         f"Across {result['observations']} yearly observations, "
         f"the average value was {result['mean']:,.2f}. "
@@ -99,16 +85,21 @@ def interpret_descriptive_summary(result):
     )
 
 
-# ============================================================
 # 3. TREND ANALYSIS
-# ============================================================
-
 def analyze_trend(data):
     """
     Perform linear trend analysis using scipy.stats.linregress.
-
     The year is treated as the independent variable and the
     agricultural metric as the dependent variable.
+     
+    Check the overall direction of the agricultural metric over time.
+
+    A positive slope means the value generally increased.
+    A negative slope means the value generally decreased.
+
+    R-squared shows how well the straight-line trend represents
+    the yearly data, while the p-value helps us judge whether
+    the observed trend is statistically significant.
     """
 
     df = prepare_annual_series(data)
@@ -132,6 +123,10 @@ def interpret_trend(result):
     """
     Interpret the direction, significance and strength of
     the observed linear trend.
+    The explanation tells us:
+    - whether the trend is increasing or decreasing
+    - whether it is statistically significant
+    - how well the trend line fits the data
     """
 
     slope = result["slope"]
@@ -172,15 +167,13 @@ def interpret_trend(result):
     }
 
 
-# ============================================================
 # 4. EARLY PERIOD VS LATER PERIOD
-# ============================================================
-
 def compare_period_trends(data):
     """
     Compare the average value in the first half and second half
     of the available years.
-
+    This helps us see whether the typical value changed
+    between the first half and second half of the dataset
     This is a descriptive comparison, not a hypothesis test.
     """
 
@@ -223,9 +216,6 @@ def compare_period_trends(data):
 
 
 def interpret_period_comparison(result):
-    """
-    Interpret the difference between the early and later periods.
-    """
 
     if result is None:
         return "There are not enough yearly observations for this comparison."
@@ -248,13 +238,13 @@ def interpret_period_comparison(result):
     )
 
 
-# ============================================================
 # 5. YEAR-OVER-YEAR CHANGE
-# ============================================================
-
 def calculate_yearly_change(data):
     """
     Calculate absolute and percentage year-over-year changes.
+    'change' shows the actual increase or decrease.
+    'percentage_change' shows the same change as a percentage
+    of the previous year's value.
     """
 
     df = prepare_annual_series(data)
@@ -269,10 +259,6 @@ def calculate_yearly_change(data):
 
 
 def interpret_yearly_changes(data):
-    """
-    Identify the largest year-over-year increase and decrease.
-    """
-
     df = calculate_yearly_change(data)
 
     changes = df.dropna(subset=["change"])
@@ -305,15 +291,20 @@ def interpret_yearly_changes(data):
     }
 
 
-# ============================================================
 # 6. CORRELATION ANALYSIS
-# ============================================================
-
 def analyze_correlation(data, column_x, column_y):
     """
     Calculate Pearson correlation between two numerical variables.
-
     Correlation indicates association and does not establish causation.
+    
+    A positive correlation means both variables generally
+    increase or decrease together.
+
+    A negative correlation means one generally increases
+    when the other decreases.
+
+    Correlation shows a relationship between variables.
+    It does not prove that one variable causes the other
     """
 
     df = data[[column_x, column_y]].copy()
@@ -377,14 +368,17 @@ def interpret_correlation(result):
         f"does not by itself establish causation."
     )
 
-
-# ============================================================
 # 7. FORECAST ERROR CALCULATION
-# ============================================================
-
 def calculate_errors(actual, predicted):
     """
-    Calculate MAE, RMSE and MAPE for forecast evaluation.
+    Measure how close the forecast values were to the actual values.
+
+    MAE  = average size of the prediction error.
+    RMSE = gives more weight to larger prediction errors.
+    MAPE = average percentage error.
+
+    Lower error values generally mean the forecasts were
+    closer to the actual values.
     """
 
     actual = np.asarray(actual, dtype=float)
@@ -417,18 +411,15 @@ def calculate_errors(actual, predicted):
         "mape": mape
     }
 
-
-# ============================================================
 # 8. HOLT FORECASTING MODEL
-# ============================================================
-
 def fit_holt_model(data, periods=5):
     """
-    Fit Holt's linear trend model to the complete historical
-    annual series and forecast future years.
+    Use Holt's linear trend method to forecast future yearly values.
 
-    No seasonal component is assumed because the project uses
-    annual observations.
+    Holt's method is useful when the data has a trend over time.
+
+    We do not include seasonality because our dataset contains
+    yearly observations rather than monthly or quarterly data.
     """
 
     df = prepare_annual_series(data)
@@ -451,17 +442,17 @@ def fit_holt_model(data, periods=5):
     }
 
 
-# ============================================================
 # 9. CHRONOLOGICAL VALIDATION
-# ============================================================
-
 def rolling_origin_validation(data, test_size=5):
     """
-    Evaluate a baseline model and Holt's linear trend model
-    using the last test_size years as the validation period.
+    Test how well the forecasting methods perform on recent
+    historical data.
 
-    The training data always comes before the testing data,
-    preserving the chronological structure of the time series.
+    The older years are used to train the models.
+    The last few years are kept aside for testing.
+
+    This keeps the data in time order, which is important
+    for time-series forecasting.
     """
 
     df = prepare_annual_series(data)
@@ -476,10 +467,8 @@ def rolling_origin_validation(data, test_size=5):
 
     actual = test["value"].to_numpy()
 
-    # --------------------------------------------------------
-    # Baseline: last observed value
-    # --------------------------------------------------------
 
+    # Baseline: last observed value
     baseline_value = train_series.iloc[-1]
 
     baseline_predictions = np.repeat(
@@ -492,10 +481,7 @@ def rolling_origin_validation(data, test_size=5):
         baseline_predictions
     )
 
-    # --------------------------------------------------------
     # Holt linear trend
-    # --------------------------------------------------------
-
     model = Holt(
         train_series,
         initialization_method="estimated"
@@ -569,16 +555,15 @@ def interpret_model_evaluation(validation):
     )
 
 
-# ============================================================
 # 10. FINAL FORECAST
-# ============================================================
-
 def forecast_annual(data, periods=5, validation_size=5):
     """
-    Validate the baseline and Holt models, then fit Holt to the
-    complete historical series and produce a future forecast.
+    Select the better-performing forecasting method based on
+    historical validation, then use that method to forecast
+    future years.
 
-    Returns both forecast values and interpretation.
+    The forecast is based on historical patterns and should
+    be treated as an estimate, not a guaranteed future value.
     """
 
     validation = rolling_origin_validation(
@@ -650,10 +635,7 @@ def forecast_annual(data, periods=5, validation_size=5):
     return result
 
 
-# ============================================================
 # 11. FORECAST INTERPRETATION
-# ============================================================
-
 def interpret_forecast(model_name, forecast_table, validation):
     """
     Interpret the selected forecasting model and projected values.

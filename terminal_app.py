@@ -1,13 +1,8 @@
 import pandas as pd
-
 from data_preprocessor import *
-
 from stat_forecasting import *
 
-# ============================================================
 # DISPLAY HELPERS
-# ============================================================
-
 def header(title):
     print()
     print("=" * 65)
@@ -27,10 +22,7 @@ def show_numbered_list(items):
         print(f"{number}. {item}")
 
 
-# ============================================================
 # DATA LOADING
-# ============================================================
-
 def load_application_data():
     """
     Load the two datasets required by different application modules.
@@ -54,11 +46,7 @@ def load_application_data():
 
     return member2_data, member3_data
 
-
-# ============================================================
 # DATASET MENU
-# ============================================================
-
 def dataset_menu(cleaned_data):
     while True:
 
@@ -140,11 +128,7 @@ def dataset_menu(cleaned_data):
         else:
             print("Invalid choice. Please select one of the available options.")
 
-
-# ============================================================
 # METRIC SELECTION
-# ============================================================
-
 def select_metric(annual_data):
 
     metrics = [
@@ -200,10 +184,7 @@ def get_metric_series(annual_data, metric):
     return metric_data.sort_values("year").reset_index(drop=True)
 
 
-# ============================================================
 # STATISTICAL ANALYSIS
-# ============================================================
-
 def statistical_analysis_menu(annual_data):
 
     while True:
@@ -256,11 +237,7 @@ def statistical_metric_menu(annual_data, metric):
         else:
             print("Invalid choice. Please select a valid option.")
 
-
-# ============================================================
 # DESCRIPTIVE STATISTICS
-# ============================================================
-
 def show_descriptive_statistics(series):
 
     subheader("DESCRIPTIVE STATISTICS")
@@ -282,10 +259,7 @@ def show_descriptive_statistics(series):
 
     print(interpretation)
 
-# ============================================================
 # TREND ANALYSIS
-# ============================================================
-
 def show_trend_analysis(series):
 
     subheader("TREND ANALYSIS")
@@ -305,10 +279,7 @@ def show_trend_analysis(series):
 
     print(interpretation["summary"])
 
-# ============================================================
 # YEAR-OVER-YEAR CHANGE
-# ============================================================
-
 def show_yearly_changes(series):
 
     subheader("YEAR-OVER-YEAR CHANGES")
@@ -382,11 +353,8 @@ def show_yearly_changes(series):
     print("\nInterpretation:")
 
     print(interpretation["summary"])
-    
-# ============================================================
-# PERIOD COMPARISON
-# ============================================================
 
+# PERIOD COMPARISON
 def show_period_comparison(series):
 
     subheader("EARLY PERIOD VS LATER PERIOD")
@@ -436,10 +404,8 @@ def show_period_comparison(series):
 
     print(interpret_period_comparison(result))
 
-# ============================================================
-# CORRELATION ANALYSIS
-# ============================================================
 
+# CORRELATION ANALYSIS
 def show_correlation_analysis(annual_data, metric):
 
     subheader("CORRELATION ANALYSIS")
@@ -543,10 +509,8 @@ def show_correlation_analysis(annual_data, metric):
 
     print(interpret_correlation(result))
 
-# ============================================================
-# FORECASTING
-# ============================================================
 
+# FORECASTING
 def forecasting_menu(annual_data):
 
     while True:
@@ -592,10 +556,7 @@ def forecasting_metric_menu(annual_data, metric):
             print("Invalid choice.")
 
 
-# ============================================================
 # MODEL EVALUATION
-# ============================================================
-
 def show_model_evaluation(series):
 
     subheader("MODEL EVALUATION")
@@ -660,10 +621,8 @@ def show_model_evaluation(series):
 
     print(interpret_model_evaluation(result))
 
-# ============================================================
-# FORECAST
-# ============================================================
 
+# FORECAST
 def show_forecast(series):
 
     subheader("FUTURE FORECAST")
@@ -754,10 +713,7 @@ def state_district_menu(cleaned_data):
             print("Invalid choice.")
 
 
-# ============================================================
 # STATE ANALYSIS
-# ============================================================
-
 def state_analysis(cleaned_data):
 
     states = (
@@ -855,10 +811,7 @@ def state_analysis_menu(state_data, state_name):
             print("Invalid choice.")
 
 
-# ============================================================
 # DISTRICT ANALYSIS
-# ============================================================
-
 def district_analysis(cleaned_data):
 
     states = (
@@ -999,10 +952,7 @@ def district_analysis_menu(
             print("Invalid choice.")
 
 
-# ============================================================
-# EDA
-# ============================================================
-
+# EDA & VISUALIZATION
 def eda_menu():
 
     header("EDA & VISUALIZATION")
@@ -1018,10 +968,8 @@ def eda_menu():
     print("- Cropping pattern visualization")
 
 
-# ============================================================
-# ABOUT
-# ============================================================
 
+# ABOUT PROJECT
 def about_project():
 
     header("ABOUT PROJECT")
@@ -1045,10 +993,7 @@ def about_project():
     print("Department of Agriculture & Farmers Welfare")
 
 
-# ============================================================
 # MAIN APPLICATION
-# ============================================================
-
 def main():
 
     print()
