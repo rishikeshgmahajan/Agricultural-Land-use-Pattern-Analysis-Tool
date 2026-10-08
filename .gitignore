@@ -1,0 +1,12 @@
+# Ignore all Python cache directories and compiled files
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ignore the VS Code environment settings folder
+.vscode/
+
+# Ignore the exploratory data analysis output directory
+eda_outputs/
+
