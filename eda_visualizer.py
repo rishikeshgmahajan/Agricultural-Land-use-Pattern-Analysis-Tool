@@ -22,8 +22,12 @@ Area values in the source data are treated as hectares.
 
 import os
 import sys
-from pathlib import Path
 import matplotlib
+import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
+import numpy as np
+import pandas as pd
+import seaborn as sns
 
 
 # Use a non-interactive backend when there is no display (headless / SSH).
@@ -36,16 +40,10 @@ if os.environ.get("MPLBACKEND") is None:
     if not _has_display:
         matplotlib.use("Agg")
 
-import matplotlib.pyplot as plt
-import matplotlib.ticker as mticker
-import numpy as np
-import pandas as pd
-import seaborn as sns
-
 # ----------------------------------------------------------------------
 # SETTINGS
 # ----------------------------------------------------------------------
-OUTPUT_DIR = Path(__file__).with_name("eda_outputs")
+OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "eda_outputs")
 
 CORE_METRICS = [
     "Reporting Area",
@@ -130,8 +128,8 @@ def _ask_year(years, prompt="Year"):
 
 def _finish(fig, filename):
     """Save the figure, show it if a display exists, then close it."""
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    path = OUTPUT_DIR / filename
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    path = os.path.join(OUTPUT_DIR, filename)
     fig.tight_layout()
     fig.savefig(path, dpi=150, bbox_inches="tight")
     print(f"\nChart saved to: {path}")
