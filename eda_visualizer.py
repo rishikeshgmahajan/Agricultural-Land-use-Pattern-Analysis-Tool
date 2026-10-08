@@ -23,8 +23,8 @@ Area values in the source data are treated as hectares.
 import os
 import sys
 from pathlib import Path
-
 import matplotlib
+
 
 # Use a non-interactive backend when there is no display (headless / SSH).
 if os.environ.get("MPLBACKEND") is None:
@@ -638,4 +638,6 @@ if __name__ == "__main__":
     from data_preprocessor import create_member2_dataset, create_member3_dataset
 
     print("Loading project data...")
-    eda_visualization_menu(create_member2_dataset(), create_member3_dataset())
+    cleaned_data = create_member2_dataset()
+    annual_data = create_member3_dataset()
+    eda_visualization_menu(cleaned_data, annual_data)
