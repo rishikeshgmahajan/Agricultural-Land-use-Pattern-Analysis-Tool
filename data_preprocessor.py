@@ -1,7 +1,7 @@
-from pathlib import Path
+import os
 import pandas as pd
 
-DATA_PATH = Path(__file__).with_name("classification-of-area.csv")
+DATA_PATH = os.path.join(os.path.dirname(__file__), "classification-of-area.csv")
 
 
 def preprocess_data(df: pd.DataFrame) -> pd.DataFrame:
