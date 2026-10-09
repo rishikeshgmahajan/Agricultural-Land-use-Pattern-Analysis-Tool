@@ -1,48 +1,34 @@
 """
-eda_visualizer.py
-=================
-EDA & visualization module for the Agricultural Land-Use Pattern Analysis Tool.
+EDA and Visualization module for the Agricultural Land-Use Pattern Analysis Tool.
 
-Uses seaborn + matplotlib. Works with the two datasets that terminal_app.py
-already loads:
+This module creates exploratory charts from the cleaned agricultural
+land-use data.
 
-    cleaned_data -> create_member2_dataset()  (state / district level rows)
-    annual_data  -> create_member3_dataset()  (national yearly totals per metric)
+The visualizations include:
+1. Overall land-use trend
+2. Comparison of land-use metrics
+3. Land-use composition
+4. Cropping intensity
+5. State-wise comparison
+6. Top and bottom states
+7. State-wise trend
+8. State-year heatmap
+9. District-wise comparison
+10. District-level distribution
+11. Year-over-year change
+12. Missing-values overview
 
-Every chart is saved as a PNG in the "eda_outputs" folder (next to this file)
-and is also shown in a window when a display is available. On machines
-without a display (SSH, servers) the charts are only saved.
-
-Entry point used by terminal_app.py:
-
-    eda_visualization_menu(cleaned_data, annual_data)
-
-Area values in the source data are treated as hectares.
+The charts are displayed using Matplotlib and Seaborn and are also
+saved in the eda_outputs folder.
 """
-
 import os
-import sys
-import matplotlib
+
 import matplotlib.pyplot as plt
-import matplotlib.ticker as mticker
 import numpy as np
 import pandas as pd
 import seaborn as sns
 
 
-# Use a non-interactive backend when there is no display (headless / SSH).
-if os.environ.get("MPLBACKEND") is None:
-    _has_display = (
-        sys.platform in ("win32", "darwin")
-        or os.environ.get("DISPLAY")
-        or os.environ.get("WAYLAND_DISPLAY")
-    )
-    if not _has_display:
-        matplotlib.use("Agg")
-
-# ----------------------------------------------------------------------
-# SETTINGS
-# ----------------------------------------------------------------------
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "eda_outputs")
 
 CORE_METRICS = [
@@ -59,15 +45,15 @@ CLASSIFICATIONS = [
     "Fallow Land",
 ]
 
+# Conversion factor: 1 million hectares = 1,000,000 hectares.
 MILLION = 1_000_000
 
-sns.set_theme(style="whitegrid", context="notebook", palette="deep")
+sns.set_theme(style="whitegrid")
 
 
-# ----------------------------------------------------------------------
-# DISPLAY / INPUT HELPERS (same look as terminal_app.py)
-# ----------------------------------------------------------------------
 def _header(title):
+    """Display the main heading of an EDA menu."""
+
     print()
     print("=" * 65)
     print(title)
@@ -75,6 +61,8 @@ def _header(title):
 
 
 def _subheader(title):
+    """Display a smaller heading inside an EDA option."""
+
     print()
     print("-" * 65)
     print(title)
@@ -82,560 +70,1640 @@ def _subheader(title):
 
 
 def _pick_from_list(items, title):
-    """Show a numbered list and return the chosen item (None = back)."""
+    """
+    Display a numbered list and return the selected item.
+
+    Returns None when the user chooses Back or enters an invalid choice.
+    """
+
     if not items:
         print("Nothing is available to choose from.")
         return None
 
     _subheader(title)
+
     for number, item in enumerate(items, start=1):
         print(f"{number}. {item}")
+
     print("0. Back")
 
     choice = input("\nEnter choice: ").strip()
 
     if choice == "0":
         return None
-    if not choice.isdigit() or not 1 <= int(choice) <= len(items):
+
+    if not choice.isdigit():
         print("Invalid choice.")
         return None
-    return items[int(choice) - 1]
+
+    number = int(choice)
+
+    if number < 1 or number > len(items):
+        print("Invalid choice.")
+        return None
+
+    return items[number - 1]
 
 
 def _ask_int(prompt, default, low, high):
-    """Ask for an integer; Enter keeps the default."""
+    """
+    Ask the user for an integer within a specified range.
+
+    Pressing Enter keeps the default value.
+    """
+
     raw = input(f"{prompt} [{default}]: ").strip()
+
     if raw == "":
         return default
-    if raw.isdigit() and low <= int(raw) <= high:
-        return int(raw)
-    print(f"Invalid value, using {default}.")
+
+    if raw.isdigit():
+        value = int(raw)
+
+        if low <= value <= high:
+            return value
+
+    print(f"Invalid value. Using {default}.")
     return default
 
 
 def _ask_year(years, prompt="Year"):
-    """Ask for a year from the available list; Enter selects the latest."""
-    years = sorted(int(y) for y in years)
+    """
+    Ask the user to select one of the available years.
+
+    Pressing Enter selects the latest available year.
+    """
+
+    years = sorted(int(year) for year in years)
+
+    if not years:
+        return None
+
     latest = years[-1]
-    raw = input(f"{prompt} ({years[0]}-{latest}) [{latest}]: ").strip()
+
+    raw = input(
+        f"{prompt} ({years[0]}-{latest}) [{latest}]: "
+    ).strip()
+
     if raw == "":
         return latest
+
     if raw.isdigit() and int(raw) in years:
         return int(raw)
-    print(f"Year not available, using {latest}.")
+
+    print(f"Year not available. Using {latest}.")
     return latest
 
 
 def _finish(fig, filename):
-    """Save the figure, show it if a display exists, then close it."""
+    """
+    Save the generated chart inside the eda_outputs folder
+    and close the figure.
+    """
+
     os.makedirs(OUTPUT_DIR, exist_ok=True)
+
     path = os.path.join(OUTPUT_DIR, filename)
+
     fig.tight_layout()
-    fig.savefig(path, dpi=150, bbox_inches="tight")
+
+    fig.savefig(
+        path,
+        dpi=150,
+        bbox_inches="tight"
+    )
+
     print(f"\nChart saved to: {path}")
 
-    if matplotlib.get_backend().lower() != "agg":
-        print("Close the chart window to continue...")
-        plt.show()
+    plt.show()
     plt.close(fig)
 
 
 def _slug(text):
-    return "".join(c.lower() if c.isalnum() else "_" for c in str(text)).strip("_")
+    """
+    Convert text into a simple filename-friendly format.
+    """
+
+    return "".join(
+        character.lower() if character.isalnum() else "_"
+        for character in str(text)
+    ).strip("_")
 
 
-def _million_formatter():
-    return mticker.FuncFormatter(lambda v, _: f"{v / MILLION:,.0f}")
+def get_categories(cleaned_data):
+    """
+    Return available land-use categories.
 
+    Core agricultural metrics are shown first, followed by
+    other available categories.
+    """
 
-# ----------------------------------------------------------------------
-# DATA HELPERS
-# ----------------------------------------------------------------------
-def _categories(cleaned_data):
-    """Core metrics first, then classification sub-categories."""
-    present = set(cleaned_data["category"].dropna().unique())
-    core = [m for m in CORE_METRICS if m in present]
-    others = sorted(present - set(core) - {"Unspecified"})
+    present = set(
+        cleaned_data["category"]
+        .dropna()
+        .unique()
+    )
+
+    core = [
+        metric
+        for metric in CORE_METRICS
+        if metric in present
+    ]
+
+    others = sorted(
+        present
+        - set(core)
+        - {"Unspecified"}
+    )
+
     return core + others
 
 
-def _category_rows(cleaned_data, category):
-    rows = cleaned_data[
+def get_category_data(cleaned_data, category):
+    """
+    Return valid records belonging to one selected category.
+    """
+
+    data = cleaned_data[
         (cleaned_data["category"] == category)
         & cleaned_data["area"].notna()
         & cleaned_data["start_year"].notna()
     ].copy()
-    rows["start_year"] = rows["start_year"].astype(int)
-    return rows
+
+    if data.empty:
+        return data
+
+    data["start_year"] = data["start_year"].astype(int)
+
+    return data
 
 
-def _yearly_totals(cleaned_data, category):
-    """National total + number of reporting districts per year."""
-    rows = _category_rows(cleaned_data, category)
-    if rows.empty:
-        return pd.DataFrame(columns=["start_year", "area", "districts"])
-    return (
-        rows.groupby("start_year")
-        .agg(area=("area", "sum"), districts=("district_name", "nunique"))
+def get_yearly_totals(cleaned_data, category):
+    """
+    Calculate yearly total area and number of reporting districts
+    for a selected land-use category.
+    """
+
+    data = get_category_data(
+        cleaned_data,
+        category
+    )
+
+    if data.empty:
+        return pd.DataFrame(
+            columns=[
+                "start_year",
+                "area",
+                "districts"
+            ]
+        )
+
+    yearly = (
+        data
+        .groupby("start_year")
+        .agg(
+            area=("area", "sum"),
+            districts=("district_name", "nunique")
+        )
         .reset_index()
     )
 
+    return yearly
 
-def _district_year_table(cleaned_data):
-    """Wide table: one row per (year, state, district), one column per category."""
-    rows = cleaned_data[
-        cleaned_data["area"].notna() & cleaned_data["start_year"].notna()
+
+def get_district_year_table(cleaned_data):
+    """
+    Convert the cleaned dataset into a district-year table.
+
+    Each row represents one district in one year and each
+    land-use category becomes a separate column.
+    """
+
+    data = cleaned_data[
+        cleaned_data["area"].notna()
+        & cleaned_data["start_year"].notna()
     ].copy()
-    rows["start_year"] = rows["start_year"].astype(int)
+
+    if data.empty:
+        return pd.DataFrame()
+
+    data["start_year"] = data["start_year"].astype(int)
+
     wide = (
-        rows.groupby(["start_year", "state_name", "district_name", "category"])["area"]
+        data
+        .groupby(
+            [
+                "start_year",
+                "state_name",
+                "district_name",
+                "category"
+            ]
+        )["area"]
         .sum()
         .unstack("category")
         .reset_index()
     )
+
     wide.columns.name = None
+
     return wide
 
 
-# ----------------------------------------------------------------------
-# 1. NATIONAL TREND OF ONE CATEGORY
-# ----------------------------------------------------------------------
+# Line Chart: Year vs Selected Land-Use Category
 def plot_category_trend(cleaned_data):
-    category = _pick_from_list(_categories(cleaned_data), "SELECT LAND-USE CATEGORY")
+    """
+    Shows how the area of one selected land-use category changes
+    over the years.
+
+    Why we are doing this:
+    To identify whether the selected land-use category is increasing,
+    decreasing, or fluctuating over time.
+
+    What it compares/shows:
+    The main chart compares yearly land-use area.
+    The smaller chart below shows the number of districts reporting
+    data in each year.
+
+    How it is useful:
+    It helps identify long-term land-use changes and also shows whether
+    changes may be associated with differences in reporting coverage.
+    """
+
+    category = _pick_from_list(
+        get_categories(cleaned_data),
+        "SELECT LAND-USE CATEGORY"
+    )
+
     if category is None:
         return
 
-    totals = _yearly_totals(cleaned_data, category)
-    if totals.empty:
+    yearly = get_yearly_totals(
+        cleaned_data,
+        category
+    )
+
+    if yearly.empty:
         print("No data available for this category.")
         return
 
     fig, (ax1, ax2) = plt.subplots(
-        2, 1, figsize=(11, 7), sharex=True, gridspec_kw={"height_ratios": [3, 1]}
+        2,
+        1,
+        figsize=(11, 7),
+        sharex=True,
+        gridspec_kw={"height_ratios": [3, 1]}
     )
 
-    sns.lineplot(data=totals, x="start_year", y="area", marker="o", ax=ax1)
-    ax1.yaxis.set_major_formatter(_million_formatter())
+    sns.lineplot(
+        data=yearly,
+        x="start_year",
+        y="area",
+        marker="o",
+        ax=ax1
+    )
+
     ax1.set_ylabel("Area (million hectares)")
     ax1.set_xlabel("")
-    ax1.set_title(f"{category}: reported total area by year")
+    ax1.set_title(
+        f"{category}: Reported Total Area by Year"
+    )
 
-    ax2.bar(totals["start_year"], totals["districts"], color="#8da0cb")
-    ax2.set_ylabel("Districts\nreporting")
-    ax2.set_xlabel("Year (start of agricultural year)")
-    ax2.tick_params(axis="x", rotation=60)
+    ax1.set_yticklabels(
+        [
+            f"{value / MILLION:,.0f}"
+            for value in ax1.get_yticks()
+        ]
+    )
+
+    ax2.bar(
+        yearly["start_year"],
+        yearly["districts"]
+    )
+
+    ax2.set_ylabel("Districts\nReporting")
+    ax2.set_xlabel(
+        "Year (start of agricultural year)"
+    )
+
+    ax2.tick_params(
+        axis="x",
+        rotation=60
+    )
 
     fig.text(
-        0.01, 0.005,
-        "Note: totals depend on how many districts reported each year (lower panel).",
-        fontsize=8, style="italic",
+        0.01,
+        0.005,
+        "The lower chart shows the number of reporting districts.",
+        fontsize=8,
+        style="italic"
     )
-    _finish(fig, f"trend_{_slug(category)}.png")
+
+    _finish(
+        fig,
+        f"trend_{_slug(category)}.png"
+    )
 
 
-# ----------------------------------------------------------------------
-# 2. CORE METRICS TOGETHER
-# ----------------------------------------------------------------------
+# Line Chart: Year vs Core Agricultural Land-Use Metrics
 def plot_core_metrics(annual_data):
-    data = annual_data[annual_data["land_use_metrics"].isin(CORE_METRICS)].copy()
+    """
+    Compares the major agricultural land-use metrics across the years.
+
+    Why we are doing this:
+    To understand how the main agricultural land-use measures have
+    changed during the study period.
+
+    What it compares/shows:
+    It compares Reporting Area, Net Area Sown, Cropped Area,
+    and Area Sown More Than Once over time.
+
+    How it is useful:
+    It helps identify similarities and differences between the major
+    agricultural land-use trends.
+    """
+
+    data = annual_data[
+        annual_data["land_use_metrics"].isin(
+            CORE_METRICS
+        )
+    ].copy()
+
     if data.empty:
         print("No core metric data available.")
         return
 
     data["start_year"] = data["start_year"].astype(int)
 
-    fig, ax = plt.subplots(figsize=(11, 6))
-    sns.lineplot(
-        data=data, x="start_year", y="area",
-        hue="land_use_metrics", hue_order=CORE_METRICS,
-        style="land_use_metrics", markers=True, dashes=False, ax=ax,
+    fig, ax = plt.subplots(
+        figsize=(11, 6)
     )
-    ax.yaxis.set_major_formatter(_million_formatter())
-    ax.set_xlabel("Year (start of agricultural year)")
-    ax.set_ylabel("Area (million hectares)")
-    ax.set_title("Core land-use metrics: national totals over time")
-    ax.legend(title="Metric", loc="best")
-    _finish(fig, "core_metrics_trend.png")
+
+    sns.lineplot(
+        data=data,
+        x="start_year",
+        y="area",
+        hue="land_use_metrics",
+        hue_order=CORE_METRICS,
+        marker="o",
+        ax=ax
+    )
+
+    ax.set_xlabel(
+        "Year (start of agricultural year)"
+    )
+
+    ax.set_ylabel(
+        "Area (million hectares)"
+    )
+
+    ax.set_title(
+        "Core Land-Use Metrics: National Totals Over Time"
+    )
+
+    ax.legend(
+        title="Metric",
+        loc="best"
+    )
+
+    _finish(
+        fig,
+        "core_metrics_trend.png"
+    )
 
 
-# ----------------------------------------------------------------------
-# 3. LAND-USE COMPOSITION
-# ----------------------------------------------------------------------
+# Stacked Area Chart: Year vs Land-Use Composition
+# Bar Chart: Latest Year vs Land-Use Subcategories
 def plot_land_use_composition(cleaned_data):
-    rows = cleaned_data[
-        cleaned_data["area_classification"].isin(CLASSIFICATIONS)
+    """
+    Shows how different land-use categories contribute to the
+    overall land-use composition.
+
+    Why we are doing this:
+    To understand whether the relative composition of land use
+    changes over the study period.
+
+    What it compares/shows:
+    The stacked area chart compares the percentage contribution
+    of major land-use classifications across years.
+    The bar chart shows the subcategory breakdown for the latest year.
+
+    How it is useful:
+    It helps identify shifts in the relative importance of different
+    land-use categories instead of looking only at their total areas.
+    """
+
+    data = cleaned_data[
+        cleaned_data["area_classification"].isin(
+            CLASSIFICATIONS
+        )
         & cleaned_data["area"].notna()
         & cleaned_data["start_year"].notna()
     ].copy()
-    if rows.empty:
+
+    if data.empty:
         print("No classification data available.")
         return
-    rows["start_year"] = rows["start_year"].astype(int)
 
-    table = rows.pivot_table(
-        index="start_year", columns="area_classification",
-        values="area", aggfunc="sum", fill_value=0,
+    data["start_year"] = data["start_year"].astype(int)
+
+    table = data.pivot_table(
+        index="start_year",
+        columns="area_classification",
+        values="area",
+        aggfunc="sum",
+        fill_value=0
     )
-    table = table[[c for c in CLASSIFICATIONS if c in table.columns]]
-    share = table.div(table.sum(axis=1), axis=0) * 100
 
-    latest = int(rows["start_year"].max())
-    sub = (
-        rows[rows["start_year"] == latest]
+    available_columns = [
+        column
+        for column in CLASSIFICATIONS
+        if column in table.columns
+    ]
+
+    table = table[available_columns]
+
+    share = (
+        table
+        .div(table.sum(axis=1), axis=0)
+        * 100
+    )
+
+    latest_year = int(
+        data["start_year"].max()
+    )
+
+    subcategories = (
+        data[data["start_year"] == latest_year]
         .groupby("area_sub_classification")["area"]
         .sum()
         .sort_values()
     )
 
     fig, (ax1, ax2) = plt.subplots(
-        1, 2, figsize=(15, 6), gridspec_kw={"width_ratios": [3, 2]}
+        1,
+        2,
+        figsize=(15, 6),
+        gridspec_kw={"width_ratios": [3, 2]}
     )
 
-    colors = sns.color_palette("deep", len(share.columns))
-    ax1.stackplot(share.index, share.T.values, labels=share.columns, colors=colors)
-    ax1.set_xlim(share.index.min(), share.index.max())
+    ax1.stackplot(
+        share.index,
+        share.T.values,
+        labels=share.columns
+    )
+
     ax1.set_ylim(0, 100)
-    ax1.set_xlabel("Year (start of agricultural year)")
-    ax1.set_ylabel("Share of classified area (%)")
-    ax1.set_title("Land-use composition over time")
-    ax1.legend(loc="upper center", bbox_to_anchor=(0.5, -0.15), ncol=2, fontsize=8)
 
-    ax2.barh(sub.index, sub.values / MILLION, color="#66a61e")
-    ax2.set_xlabel("Area (million hectares)")
-    ax2.set_title(f"Breakdown by sub-classification ({latest})")
-    ax2.tick_params(axis="y", labelsize=8)
+    ax1.set_xlabel(
+        "Year (start of agricultural year)"
+    )
 
-    _finish(fig, "land_use_composition.png")
+    ax1.set_ylabel(
+        "Share of Classified Area (%)"
+    )
+
+    ax1.set_title(
+        "Land-Use Composition Over Time"
+    )
+
+    ax1.legend(
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.15),
+        ncol=2,
+        fontsize=8
+    )
+
+    ax2.barh(
+        subcategories.index,
+        subcategories.values / MILLION
+    )
+
+    ax2.set_xlabel(
+        "Area (million hectares)"
+    )
+
+    ax2.set_title(
+        f"Land-Use Subcategories in {latest_year}"
+    )
+
+    ax2.tick_params(
+        axis="y",
+        labelsize=8
+    )
+
+    _finish(
+        fig,
+        "land_use_composition.png"
+    )
 
 
-# ----------------------------------------------------------------------
-# 4. CROPPING PATTERN
-# ----------------------------------------------------------------------
-def plot_cropping_pattern(cleaned_data):
-    wide = _district_year_table(cleaned_data)
-    needed = ["Net Area Sown", "Cropped Area", "Reporting Area"]
-    if any(col not in wide.columns for col in needed):
+# Line Charts: Year vs Cropping Intensity and Net Area Sown Share
+def plot_cropping_intensity(cleaned_data):
+    """
+    Shows changes in cropping intensity and the share of net area
+    sown over the study period.
+
+    Why we are doing this:
+    To understand not only how much agricultural land exists, but
+    also how intensively that land is being used.
+
+    What it compares/shows:
+    The first chart shows Cropping Intensity calculated as
+    Cropped Area / Net Area Sown × 100.
+    The second chart shows Net Area Sown as a percentage of
+    Reporting Area.
+
+    How it is useful:
+    Together, these measures help distinguish changes in the amount
+    of agricultural land from changes in how intensively the land
+    is cultivated.
+    """
+
+    wide = get_district_year_table(
+        cleaned_data
+    )
+
+    required = [
+        "Net Area Sown",
+        "Cropped Area",
+        "Reporting Area"
+    ]
+
+    if any(
+        column not in wide.columns
+        for column in required
+    ):
         print("Required metrics are not available.")
         return
 
-    # Only districts that report all three values in the same year, so the
-    # ratios are not distorted by districts that are missing.
-    complete = wide.dropna(subset=needed)
-    complete = complete[complete["Net Area Sown"] > 0]
+    complete = wide.dropna(
+        subset=required
+    )
+
+    complete = complete[
+        complete["Net Area Sown"] > 0
+    ]
+
     if complete.empty:
         print("Not enough complete records.")
         return
 
-    yearly = complete.groupby("start_year")[needed].sum()
-    intensity = yearly["Cropped Area"] / yearly["Net Area Sown"] * 100
-    sown_share = yearly["Net Area Sown"] / yearly["Reporting Area"] * 100
+    yearly = (
+        complete
+        .groupby("start_year")[required]
+        .sum()
+    )
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5.5))
+    cropping_intensity = (
+        yearly["Cropped Area"]
+        / yearly["Net Area Sown"]
+        * 100
+    )
 
-    sns.lineplot(x=intensity.index, y=intensity.values,
-                 marker="o", color="#d95f02", ax=ax1)
-    ax1.set_title("Cropping intensity\n(Cropped Area / Net Area Sown x 100)")
-    ax1.set_xlabel("Year (start of agricultural year)")
-    ax1.set_ylabel("Percent")
+    sown_share = (
+        yearly["Net Area Sown"]
+        / yearly["Reporting Area"]
+        * 100
+    )
 
-    sns.lineplot(x=sown_share.index, y=sown_share.values,
-                 marker="o", color="#1b9e77", ax=ax2)
-    ax2.set_title("Net Area Sown as share of Reporting Area")
-    ax2.set_xlabel("Year (start of agricultural year)")
-    ax2.set_ylabel("Percent")
+    fig, (ax1, ax2) = plt.subplots(
+        1,
+        2,
+        figsize=(14, 5.5)
+    )
+
+    sns.lineplot(
+        x=cropping_intensity.index,
+        y=cropping_intensity.values,
+        marker="o",
+        ax=ax1
+    )
+
+    ax1.set_title(
+        "Cropping Intensity"
+    )
+
+    ax1.set_xlabel(
+        "Year (start of agricultural year)"
+    )
+
+    ax1.set_ylabel(
+        "Cropping Intensity (%)"
+    )
+
+    sns.lineplot(
+        x=sown_share.index,
+        y=sown_share.values,
+        marker="o",
+        ax=ax2
+    )
+
+    ax2.set_title(
+        "Net Area Sown as Share of Reporting Area"
+    )
+
+    ax2.set_xlabel(
+        "Year (start of agricultural year)"
+    )
+
+    ax2.set_ylabel(
+        "Net Area Sown (%)"
+    )
 
     fig.text(
-        0.01, 0.005,
-        "Based only on districts reporting all three metrics in that year.",
-        fontsize=8, style="italic",
+        0.01,
+        0.005,
+        "Calculated using districts reporting all three required metrics.",
+        fontsize=8,
+        style="italic"
     )
-    _finish(fig, "cropping_pattern.png")
+
+    _finish(
+        fig,
+        "cropping_intensity.png"
+    )
 
 
-# ----------------------------------------------------------------------
-# 5. STATE COMPARISON (BAR)
-# ----------------------------------------------------------------------
+# Bar Chart: States vs Selected Land-Use Area for a Selected Year
 def plot_state_comparison(cleaned_data):
-    category = _pick_from_list(_categories(cleaned_data), "SELECT LAND-USE CATEGORY")
+    """
+    Compares Indian states based on the area of a selected land-use
+    category for one chosen year.
+
+    Why we are doing this:
+    To understand how land-use patterns differ between states.
+
+    What it compares/shows:
+    It compares the selected land-use area across states for
+    the selected year.
+
+    How it is useful:
+    It helps identify states with relatively higher or lower amounts
+    of the selected land-use category.
+    """
+
+    category = _pick_from_list(
+        get_categories(cleaned_data),
+        "SELECT LAND-USE CATEGORY"
+    )
+
     if category is None:
         return
 
-    rows = _category_rows(cleaned_data, category)
-    if rows.empty:
-        print("No data available for this category.")
+    data = get_category_data(
+        cleaned_data,
+        category
+    )
+
+    if data.empty:
+        print("No data available.")
         return
 
-    year = _ask_year(rows["start_year"].unique())
-    top_n = _ask_int("Number of states to show", 15, 3, 36)
+    year = _ask_year(
+        data["start_year"].unique()
+    )
 
-    by_state = (
-        rows[rows["start_year"] == year]
-        .groupby("state_name")["area"].sum()
+    top_n = _ask_int(
+        "Number of states to show",
+        15,
+        3,
+        36
+    )
+
+    state_values = (
+        data[data["start_year"] == year]
+        .groupby("state_name")["area"]
+        .sum()
         .sort_values(ascending=False)
         .head(top_n)
     )
-    if by_state.empty:
-        print("No data for that year.")
+
+    if state_values.empty:
+        print("No data available for that year.")
         return
 
-    fig, ax = plt.subplots(figsize=(10, 0.45 * len(by_state) + 2))
-    sns.barplot(x=by_state.values / MILLION, y=by_state.index.tolist(),
-                hue=by_state.index.tolist(), palette="viridis",
-                legend=False, ax=ax)
-    ax.set_xlabel("Area (million hectares)")
-    ax.set_ylabel("")
-    ax.set_title(f"{category}: top {len(by_state)} states, {year}")
-    _finish(fig, f"states_{_slug(category)}_{year}.png")
+    fig, ax = plt.subplots(
+        figsize=(10, 7)
+    )
+
+    ax.barh(
+        state_values.index[::-1],
+        state_values.values[::-1] / MILLION
+    )
+
+    ax.set_xlabel(
+        "Area (million hectares)"
+    )
+
+    ax.set_ylabel(
+        "State"
+    )
+
+    ax.set_title(
+        f"{category}: State Comparison ({year})"
+    )
+
+    _finish(
+        fig,
+        f"state_comparison_{_slug(category)}_{year}.png"
+    )
 
 
-# ----------------------------------------------------------------------
-# 6. STATE TRENDS (LINES)
-# ----------------------------------------------------------------------
-def plot_state_trends(cleaned_data):
-    category = _pick_from_list(_categories(cleaned_data), "SELECT LAND-USE CATEGORY")
+# Bar Charts: Top and Bottom States vs Selected Land-Use Area
+def plot_top_bottom_states(cleaned_data):
+    """
+    Identifies and compares states with the highest and lowest
+    values for a selected land-use category.
+
+    Why we are doing this:
+    To identify states that stand out at the upper and lower
+    ends of the land-use distribution.
+
+    What it compares/shows:
+    It compares the top states and bottom states based on the
+    selected land-use area for a chosen year.
+
+    How it is useful:
+    This provides a quick state-level ranking and makes regional
+    differences easier to interpret.
+    """
+
+    category = _pick_from_list(
+        get_categories(cleaned_data),
+        "SELECT LAND-USE CATEGORY"
+    )
+
     if category is None:
         return
 
-    rows = _category_rows(cleaned_data, category)
-    if rows.empty:
-        print("No data available for this category.")
+    data = get_category_data(
+        cleaned_data,
+        category
+    )
+
+    if data.empty:
+        print("No data available.")
         return
 
-    top_n = _ask_int("Number of states to compare", 6, 2, 10)
-    latest = rows["start_year"].max()
-    ranking = (
-        rows[rows["start_year"] == latest]
-        .groupby("state_name")["area"].sum()
+    year = _ask_year(
+        data["start_year"].unique()
+    )
+
+    top_n = _ask_int(
+        "Number of top/bottom states",
+        5,
+        2,
+        10
+    )
+
+    values = (
+        data[data["start_year"] == year]
+        .groupby("state_name")["area"]
+        .sum()
         .sort_values(ascending=False)
     )
-    chosen = ranking.head(top_n).index.tolist()
+
+    if values.empty:
+        print("No data available.")
+        return
+
+    top_states = values.head(top_n)
+    bottom_states = values.tail(top_n).sort_values()
+
+    fig, (ax1, ax2) = plt.subplots(
+        1,
+        2,
+        figsize=(14, 6)
+    )
+
+    ax1.barh(
+        top_states.index[::-1],
+        top_states.values[::-1] / MILLION
+    )
+
+    ax1.set_title(
+        f"Top {top_n} States"
+    )
+
+    ax1.set_xlabel(
+        "Area (million hectares)"
+    )
+
+    ax2.barh(
+        bottom_states.index,
+        bottom_states.values / MILLION
+    )
+
+    ax2.set_title(
+        f"Bottom {top_n} States"
+    )
+
+    ax2.set_xlabel(
+        "Area (million hectares)"
+    )
+
+    fig.suptitle(
+        f"{category}: Top and Bottom States ({year})"
+    )
+
+    _finish(
+        fig,
+        f"top_bottom_states_{_slug(category)}_{year}.png"
+    )
+
+
+# Line Chart: Year vs Selected Land-Use Area for Top States
+def plot_state_trends(cleaned_data):
+    """
+    Shows how the selected land-use category changes over time
+    for the leading states.
+
+    Why we are doing this:
+    A single-year state comparison cannot show whether a state has
+    consistently remained high or whether its position has changed.
+
+    What it compares/shows:
+    It compares yearly land-use trends for the top states,
+    ranked according to the latest available year.
+
+    How it is useful:
+    It helps determine whether leading states have followed similar
+    trends or whether their land-use patterns have changed differently.
+    """
+
+    category = _pick_from_list(
+        get_categories(cleaned_data),
+        "SELECT LAND-USE CATEGORY"
+    )
+
+    if category is None:
+        return
+
+    data = get_category_data(
+        cleaned_data,
+        category
+    )
+
+    if data.empty:
+        print("No data available.")
+        return
+
+    top_n = _ask_int(
+        "Number of states to compare",
+        6,
+        2,
+        10
+    )
+
+    latest_year = data["start_year"].max()
+
+    ranking = (
+        data[data["start_year"] == latest_year]
+        .groupby("state_name")["area"]
+        .sum()
+        .sort_values(ascending=False)
+    )
+
+    selected_states = (
+        ranking
+        .head(top_n)
+        .index
+        .tolist()
+    )
 
     trend = (
-        rows[rows["state_name"].isin(chosen)]
-        .groupby(["start_year", "state_name"])["area"].sum()
+        data[
+            data["state_name"].isin(
+                selected_states
+            )
+        ]
+        .groupby(
+            ["start_year", "state_name"]
+        )["area"]
+        .sum()
         .reset_index()
     )
 
-    fig, ax = plt.subplots(figsize=(11, 6))
-    sns.lineplot(data=trend, x="start_year", y="area", hue="state_name",
-                 hue_order=chosen, marker="o", ax=ax)
-    ax.yaxis.set_major_formatter(_million_formatter())
-    ax.set_xlabel("Year (start of agricultural year)")
-    ax.set_ylabel("Area (million hectares)")
-    ax.set_title(f"{category}: largest {len(chosen)} states (ranked by {int(latest)})")
-    ax.legend(title="State", fontsize=8, loc="center left", bbox_to_anchor=(1, 0.5))
-    _finish(fig, f"state_trends_{_slug(category)}.png")
+    fig, ax = plt.subplots(
+        figsize=(11, 6)
+    )
+
+    sns.lineplot(
+        data=trend,
+        x="start_year",
+        y="area",
+        hue="state_name",
+        marker="o",
+        ax=ax
+    )
+
+    ax.set_xlabel(
+        "Year (start of agricultural year)"
+    )
+
+    ax.set_ylabel(
+        "Area (million hectares)"
+    )
+
+    ax.set_title(
+        f"{category}: Land-Use Trends for Top States"
+    )
+
+    ax.legend(
+        title="State",
+        fontsize=8,
+        loc="center left",
+        bbox_to_anchor=(1, 0.5)
+    )
+
+    _finish(
+        fig,
+        f"state_trends_{_slug(category)}.png"
+    )
 
 
-# ----------------------------------------------------------------------
-# 7. STATE x YEAR HEATMAP
-# ----------------------------------------------------------------------
+# Heatmap: State vs Year for Selected Land-Use Category
 def plot_state_heatmap(cleaned_data):
-    category = _pick_from_list(_categories(cleaned_data), "SELECT LAND-USE CATEGORY")
+    """
+    Displays selected land-use values for states across multiple years
+    using colour intensity.
+
+    Why we are doing this:
+    To examine state-level changes across several years at the same time.
+
+    What it compares/shows:
+    States are shown on one axis and years on the other axis.
+    Colour intensity represents the area of the selected land-use category.
+
+    How it is useful:
+    It helps quickly identify states with consistently high or low values
+    and years where noticeable changes occurred.
+    """
+
+    category = _pick_from_list(
+        get_categories(cleaned_data),
+        "SELECT LAND-USE CATEGORY"
+    )
+
     if category is None:
         return
 
-    rows = _category_rows(cleaned_data, category)
-    if rows.empty:
-        print("No data available for this category.")
+    data = get_category_data(
+        cleaned_data,
+        category
+    )
+
+    if data.empty:
+        print("No data available.")
         return
 
-    top_n = _ask_int("Number of states to show", 15, 3, 36)
-    table = rows.pivot_table(index="state_name", columns="start_year",
-                             values="area", aggfunc="sum")
-    table = table.loc[table.sum(axis=1).sort_values(ascending=False).head(top_n).index]
+    top_n = _ask_int(
+        "Number of states to show",
+        15,
+        3,
+        36
+    )
+
+    table = data.pivot_table(
+        index="state_name",
+        columns="start_year",
+        values="area",
+        aggfunc="sum"
+    )
+
+    state_order = (
+        table.sum(axis=1)
+        .sort_values(ascending=False)
+        .head(top_n)
+        .index
+    )
+
+    table = table.loc[state_order]
+
     table = table / MILLION
 
-    fig, ax = plt.subplots(figsize=(14, 0.45 * len(table) + 3))
-    sns.heatmap(table, cmap="YlGn", linewidths=0.3, linecolor="white",
-                cbar_kws={"label": "Million hectares"}, ax=ax)
-    ax.set_xlabel("Year (start of agricultural year)")
-    ax.set_ylabel("")
-    ax.set_title(f"{category}: state x year (blank = no data)")
-    _finish(fig, f"state_heatmap_{_slug(category)}.png")
+    fig, ax = plt.subplots(
+        figsize=(14, 8)
+    )
+
+    sns.heatmap(
+        table,
+        cmap="YlGn",
+        linewidths=0.3,
+        cbar_kws={
+            "label": "Million hectares"
+        },
+        ax=ax
+    )
+
+    ax.set_xlabel(
+        "Year (start of agricultural year)"
+    )
+
+    ax.set_ylabel(
+        "State"
+    )
+
+    ax.set_title(
+        f"{category}: State vs Year"
+    )
+
+    _finish(
+        fig,
+        f"state_heatmap_{_slug(category)}.png"
+    )
 
 
-# ----------------------------------------------------------------------
-# 8. DISTRICT COMPARISON
-# ----------------------------------------------------------------------
+# Bar Chart: Districts vs Selected Land-Use Area within a State
 def plot_district_comparison(cleaned_data):
-    states = sorted(cleaned_data["state_name"].dropna().unique().tolist())
-    state = _pick_from_list(states, "SELECT STATE")
+    """
+    Compares districts within a selected state based on a selected
+    land-use category.
+
+    Why we are doing this:
+    State-level analysis can hide important differences between
+    individual districts.
+
+    What it compares/shows:
+    It compares the selected land-use area across districts for
+    a chosen state and year.
+
+    How it is useful:
+    It helps identify districts with substantially different
+    land-use patterns within the same state.
+    """
+
+    states = sorted(
+        cleaned_data["state_name"]
+        .dropna()
+        .unique()
+        .tolist()
+    )
+
+    state = _pick_from_list(
+        states,
+        "SELECT STATE"
+    )
+
     if state is None:
         return
 
-    category = _pick_from_list(_categories(cleaned_data), "SELECT LAND-USE CATEGORY")
+    category = _pick_from_list(
+        get_categories(cleaned_data),
+        "SELECT LAND-USE CATEGORY"
+    )
+
     if category is None:
         return
 
-    rows = _category_rows(cleaned_data, category)
-    rows = rows[rows["state_name"] == state]
-    if rows.empty:
-        print("No data available for this state and category.")
+    data = get_category_data(
+        cleaned_data,
+        category
+    )
+
+    data = data[
+        data["state_name"] == state
+    ]
+
+    if data.empty:
+        print(
+            "No data available for this state and category."
+        )
         return
 
-    year = _ask_year(rows["start_year"].unique())
-    top_n = _ask_int("Number of districts to show", 15, 3, 40)
+    year = _ask_year(
+        data["start_year"].unique()
+    )
 
-    by_district = (
-        rows[rows["start_year"] == year]
-        .groupby("district_name")["area"].sum()
+    top_n = _ask_int(
+        "Number of districts to show",
+        15,
+        3,
+        40
+    )
+
+    district_values = (
+        data[data["start_year"] == year]
+        .groupby("district_name")["area"]
+        .sum()
         .sort_values(ascending=False)
         .head(top_n)
     )
-    if by_district.empty:
-        print("No data for that year.")
+
+    if district_values.empty:
+        print("No data available for that year.")
         return
 
-    fig, ax = plt.subplots(figsize=(10, 0.45 * len(by_district) + 2))
-    sns.barplot(x=by_district.values / 1000, y=by_district.index.tolist(),
-                hue=by_district.index.tolist(), palette="mako",
-                legend=False, ax=ax)
-    ax.set_xlabel("Area (thousand hectares)")
-    ax.set_ylabel("")
-    ax.set_title(f"{state}: top {len(by_district)} districts, {category} ({year})")
-    _finish(fig, f"districts_{_slug(state)}_{_slug(category)}_{year}.png")
+    fig, ax = plt.subplots(
+        figsize=(10, 7)
+    )
+
+    ax.barh(
+        district_values.index[::-1],
+        district_values.values[::-1] / 1000
+    )
+
+    ax.set_xlabel(
+        "Area (thousand hectares)"
+    )
+
+    ax.set_ylabel(
+        "District"
+    )
+
+    ax.set_title(
+        f"{state}: District Comparison for {category} ({year})"
+    )
+
+    _finish(
+        fig,
+        f"district_comparison_{_slug(state)}_{_slug(category)}_{year}.png"
+    )
 
 
-# ----------------------------------------------------------------------
-# 9. DISTRIBUTION ACROSS DISTRICTS
-# ----------------------------------------------------------------------
-def plot_distribution(cleaned_data):
-    category = _pick_from_list(_categories(cleaned_data), "SELECT LAND-USE CATEGORY")
+# Box Plot and Histogram: Distribution of District Land-Use Areas
+def plot_district_distribution(cleaned_data):
+    """
+    Examines how the selected land-use area is distributed across
+    districts.
+
+    Why we are doing this:
+    Total or average values can hide the variation between individual
+    districts.
+
+    What it compares/shows:
+    The box plot shows the spread of district values across selected
+    years. The histogram shows the distribution of district values
+    in the latest available year.
+
+    How it is useful:
+    It helps identify variation, unusually high or low district values,
+    and whether most districts have similar or very different
+    land-use areas.
+    """
+
+    category = _pick_from_list(
+        get_categories(cleaned_data),
+        "SELECT LAND-USE CATEGORY"
+    )
+
     if category is None:
         return
 
-    rows = _category_rows(cleaned_data, category)
-    rows = rows[rows["area"] > 0]
-    if rows.empty:
-        print("No positive values available for this category.")
+    data = get_category_data(
+        cleaned_data,
+        category
+    )
+
+    data = data[
+        data["area"] > 0
+    ]
+
+    if data.empty:
+        print(
+            "No positive values available."
+        )
         return
 
-    years = sorted(rows["start_year"].unique())
-    shown_years = years[::5]
-    if years[-1] not in shown_years:
-        shown_years.append(years[-1])
-    subset = rows[rows["start_year"].isin(shown_years)]
+    years = sorted(
+        data["start_year"].unique()
+    )
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+    selected_years = years[::5]
 
-    sns.boxplot(data=subset, x="start_year", y="area", color="#a6cee3",
-                fliersize=2, ax=ax1)
+    if years[-1] not in selected_years:
+        selected_years.append(
+            years[-1]
+        )
+
+    subset = data[
+        data["start_year"].isin(
+            selected_years
+        )
+    ]
+
+    fig, (ax1, ax2) = plt.subplots(
+        1,
+        2,
+        figsize=(14, 6)
+    )
+
+    sns.boxplot(
+        data=subset,
+        x="start_year",
+        y="area",
+        ax=ax1
+    )
+
     ax1.set_yscale("log")
-    ax1.set_xlabel("Year (start of agricultural year)")
-    ax1.set_ylabel("District area (hectares, log scale)")
-    ax1.set_title(f"{category}: district-level spread")
 
-    latest = subset[subset["start_year"] == shown_years[-1]]
-    sns.histplot(latest["area"], log_scale=True, bins=35, kde=True,
-                 color="#1f78b4", ax=ax2)
-    ax2.set_xlabel("District area (hectares, log scale)")
-    ax2.set_ylabel("Number of districts")
-    ax2.set_title(f"Distribution in {shown_years[-1]}")
+    ax1.set_xlabel(
+        "Year (start of agricultural year)"
+    )
 
-    _finish(fig, f"distribution_{_slug(category)}.png")
+    ax1.set_ylabel(
+        "District Area (hectares, log scale)"
+    )
+
+    ax1.set_title(
+        f"{category}: District-Level Spread"
+    )
+
+    latest_year = selected_years[-1]
+
+    latest_data = subset[
+        subset["start_year"] == latest_year
+    ]
+
+    sns.histplot(
+        latest_data["area"],
+        bins=35,
+        kde=True,
+        ax=ax2
+    )
+
+    ax2.set_xlabel(
+        "District Area (hectares)"
+    )
+
+    ax2.set_ylabel(
+        "Number of Districts"
+    )
+
+    ax2.set_title(
+        f"District Distribution in {latest_year}"
+    )
+
+    _finish(
+        fig,
+        f"district_distribution_{_slug(category)}.png"
+    )
 
 
-# ----------------------------------------------------------------------
-# 10. CORRELATION HEATMAP
-# ----------------------------------------------------------------------
-def plot_correlation_heatmap(cleaned_data):
-    wide = _district_year_table(cleaned_data)
-    columns = [c for c in _categories(cleaned_data) if c in wide.columns]
-    numeric = wide[columns]
-    if numeric.dropna(how="all").shape[0] < 10 or len(columns) < 2:
-        print("Not enough data for a correlation matrix.")
+# Bar Chart: Year vs Year-over-Year Percentage Change
+def plot_year_over_year_change(annual_data):
+    """
+    Shows the percentage change in a selected land-use metric from
+    one year to the next.
+
+    Why we are doing this:
+    Long-term trend charts show the overall direction but may not
+    clearly show sudden increases or decreases between consecutive years.
+
+    What it compares/shows:
+    It compares each year's value with the previous year's value
+    and displays the percentage change.
+
+    How it is useful:
+    It helps identify years with unusually large increases or decreases
+    in the selected land-use metric.
+    """
+
+    metrics = sorted(
+        annual_data["land_use_metrics"]
+        .dropna()
+        .unique()
+        .tolist()
+    )
+
+    metric = _pick_from_list(
+        metrics,
+        "SELECT LAND-USE METRIC"
+    )
+
+    if metric is None:
         return
 
-    corr = numeric.corr(min_periods=10)
+    data = annual_data[
+        annual_data["land_use_metrics"] == metric
+    ].copy()
 
-    fig, ax = plt.subplots(figsize=(11, 9))
-    sns.heatmap(corr, annot=True, fmt=".2f", cmap="coolwarm", vmin=-1, vmax=1,
-                square=True, linewidths=0.5, cbar_kws={"label": "Pearson r"}, ax=ax)
-    ax.set_title("Correlation between land-use categories\n(district-year level)")
-    ax.set_xlabel("")
-    ax.set_ylabel("")
-    ax.tick_params(axis="x", rotation=45)
-    plt.setp(ax.get_xticklabels(), ha="right")
-    _finish(fig, "correlation_heatmap.png")
+    data["start_year"] = data["start_year"].astype(int)
+
+    data = data.sort_values(
+        "start_year"
+    )
+
+    data["percentage_change"] = (
+        data["area"]
+        .pct_change()
+        * 100
+    )
+
+    data = data.dropna(
+        subset=["percentage_change"]
+    )
+
+    if data.empty:
+        print(
+            "Not enough data to calculate year-over-year change."
+        )
+        return
+
+    fig, ax = plt.subplots(
+        figsize=(11, 6)
+    )
+
+    ax.bar(
+        data["start_year"],
+        data["percentage_change"]
+    )
+
+    ax.axhline(
+        0,
+        linewidth=1
+    )
+
+    ax.set_xlabel(
+        "Year (start of agricultural year)"
+    )
+
+    ax.set_ylabel(
+        "Year-over-Year Change (%)"
+    )
+
+    ax.set_title(
+        f"{metric}: Year-over-Year Percentage Change"
+    )
+
+    ax.tick_params(
+        axis="x",
+        rotation=60
+    )
+
+    _finish(
+        fig,
+        f"year_over_year_{_slug(metric)}.png"
+    )
 
 
-# ----------------------------------------------------------------------
-# 11. DATA QUALITY / MISSING VALUES
-# ----------------------------------------------------------------------
+# Bar Chart: Year/Category vs Percentage of Missing Area Values
 def plot_missing_values(cleaned_data):
-    rows = cleaned_data[cleaned_data["start_year"].notna()].copy()
-    rows["start_year"] = rows["start_year"].astype(int)
-    rows["missing"] = rows["area"].isna()
+    """
+    Shows the percentage of missing area values across categories
+    and years.
 
-    by_category = rows.groupby("category")["missing"].mean().mul(100).sort_values()
-    by_year = rows.groupby("start_year")["missing"].mean().mul(100)
+    Why we are doing this:
+    To understand the completeness of the dataset before interpreting
+    the main EDA results.
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+    What it compares/shows:
+    The first chart compares missing area percentages across
+    land-use categories. The second chart compares missing values
+    across years.
 
-    ax1.barh(by_category.index, by_category.values, color="#fc8d62")
-    ax1.set_xlabel("Missing area values (%)")
-    ax1.set_title("Missing values by land-use category")
-    ax1.tick_params(axis="y", labelsize=8)
+    How it is useful:
+    It helps identify categories or periods where missing data may
+    affect the interpretation of the analysis.
+    """
 
-    ax2.bar(by_year.index, by_year.values, color="#8da0cb")
-    ax2.set_xlabel("Year (start of agricultural year)")
-    ax2.set_ylabel("Missing area values (%)")
-    ax2.set_title("Missing values by year")
-    ax2.tick_params(axis="x", rotation=60)
+    data = cleaned_data[
+        cleaned_data["start_year"].notna()
+    ].copy()
 
-    _finish(fig, "missing_values.png")
+    if data.empty:
+        print("No data available.")
+        return
+
+    data["start_year"] = data[
+        "start_year"
+    ].astype(int)
+
+    data["missing"] = data[
+        "area"
+    ].isna()
+
+    by_category = (
+        data
+        .groupby("category")["missing"]
+        .mean()
+        .mul(100)
+        .sort_values()
+    )
+
+    by_year = (
+        data
+        .groupby("start_year")["missing"]
+        .mean()
+        .mul(100)
+    )
+
+    fig, (ax1, ax2) = plt.subplots(
+        1,
+        2,
+        figsize=(14, 6)
+    )
+
+    ax1.barh(
+        by_category.index,
+        by_category.values
+    )
+
+    ax1.set_xlabel(
+        "Missing Area Values (%)"
+    )
+
+    ax1.set_ylabel(
+        "Land-Use Category"
+    )
+
+    ax1.set_title(
+        "Missing Values by Land-Use Category"
+    )
+
+    ax2.bar(
+        by_year.index,
+        by_year.values
+    )
+
+    ax2.set_xlabel(
+        "Year (start of agricultural year)"
+    )
+
+    ax2.set_ylabel(
+        "Missing Area Values (%)"
+    )
+
+    ax2.set_title(
+        "Missing Values by Year"
+    )
+
+    ax2.tick_params(
+        axis="x",
+        rotation=60
+    )
+
+    _finish(
+        fig,
+        "missing_values.png"
+    )
 
 
-# ----------------------------------------------------------------------
-# MENU (called from terminal_app.py)
-# ----------------------------------------------------------------------
 def eda_visualization_menu(cleaned_data, annual_data):
-    """Interactive EDA & visualization menu."""
+    """
+    Display the main EDA and visualization menu.
 
-    actions = {
-        "1": ("Trend of a land-use category (national)", lambda: plot_category_trend(cleaned_data)),
-        "2": ("Core metrics comparison", lambda: plot_core_metrics(annual_data)),
-        "3": ("Land-use composition", lambda: plot_land_use_composition(cleaned_data)),
-        "4": ("Cropping pattern (intensity)", lambda: plot_cropping_pattern(cleaned_data)),
-        "5": ("State comparison (bar chart)", lambda: plot_state_comparison(cleaned_data)),
-        "6": ("State trends (line chart)", lambda: plot_state_trends(cleaned_data)),
-        "7": ("State x year heatmap", lambda: plot_state_heatmap(cleaned_data)),
-        "8": ("District comparison within a state", lambda: plot_district_comparison(cleaned_data)),
-        "9": ("Distribution across districts", lambda: plot_distribution(cleaned_data)),
-        "10": ("Correlation heatmap", lambda: plot_correlation_heatmap(cleaned_data)),
-        "11": ("Missing values overview", lambda: plot_missing_values(cleaned_data)),
-    }
+    The menu allows the user to select different exploratory
+    visualizations without changing the main terminal application.
+    """
 
     while True:
-        _header("EDA & VISUALIZATION")
 
-        for key, (label, _) in actions.items():
-            print(f"{key}. {label}")
-        print("0. Back")
+        _header(
+            "EDA & VISUALIZATION"
+        )
 
-        choice = input("\nEnter choice: ").strip()
+        print(
+            "1. Overall Land-Use Trend"
+        )
+
+        print(
+            "2. Compare Core Land-Use Metrics"
+        )
+
+        print(
+            "3. Land-Use Composition"
+        )
+
+        print(
+            "4. Cropping Intensity"
+        )
+
+        print(
+            "5. State-wise Comparison"
+        )
+
+        print(
+            "6. Top/Bottom States"
+        )
+
+        print(
+            "7. State-wise Trend"
+        )
+
+        print(
+            "8. State-Year Heatmap"
+        )
+
+        print(
+            "9. District-wise Comparison"
+        )
+
+        print(
+            "10. District Distribution"
+        )
+
+        print(
+            "11. Year-over-Year Change"
+        )
+
+        print(
+            "12. Missing Values Overview"
+        )
+
+        print(
+            "0. Back"
+        )
+
+        choice = input(
+            "\nEnter choice: "
+        ).strip()
 
         if choice == "0":
             return
 
-        if choice not in actions:
-            print("Invalid choice. Please select one of the available options.")
-            continue
-
         try:
-            actions[choice][1]()
-        except (EOFError, KeyboardInterrupt):
-            raise
-        except Exception as error:  # keep the terminal app alive
+
+            if choice == "1":
+                plot_category_trend(
+                    cleaned_data
+                )
+
+            elif choice == "2":
+                plot_core_metrics(
+                    annual_data
+                )
+
+            elif choice == "3":
+                plot_land_use_composition(
+                    cleaned_data
+                )
+
+            elif choice == "4":
+                plot_cropping_intensity(
+                    cleaned_data
+                )
+
+            elif choice == "5":
+                plot_state_comparison(
+                    cleaned_data
+                )
+
+            elif choice == "6":
+                plot_top_bottom_states(
+                    cleaned_data
+                )
+
+            elif choice == "7":
+                plot_state_trends(
+                    cleaned_data
+                )
+
+            elif choice == "8":
+                plot_state_heatmap(
+                    cleaned_data
+                )
+
+            elif choice == "9":
+                plot_district_comparison(
+                    cleaned_data
+                )
+
+            elif choice == "10":
+                plot_district_distribution(
+                    cleaned_data
+                )
+
+            elif choice == "11":
+                plot_year_over_year_change(
+                    annual_data
+                )
+
+            elif choice == "12":
+                plot_missing_values(
+                    cleaned_data
+                )
+
+            else:
+                print(
+                    "Invalid choice. Please select a valid option."
+                )
+
+        except Exception as error:
+
             plt.close("all")
-            print(f"\nCould not create the chart: {error}")
+
+            print(
+                f"\nCould not create the chart: {error}"
+            )
 
 
 if __name__ == "__main__":
-    from data_preprocessor import create_member2_dataset, create_member3_dataset
 
-    print("Loading project data...")
+    from data_preprocessor import (
+        create_member2_dataset,
+        create_member3_dataset
+    )
+
+    print(
+        "Loading project data..."
+    )
+
     cleaned_data = create_member2_dataset()
+
     annual_data = create_member3_dataset()
-    eda_visualization_menu(cleaned_data, annual_data)
+
+    eda_visualization_menu(
+        cleaned_data,
+        annual_data
+    )
