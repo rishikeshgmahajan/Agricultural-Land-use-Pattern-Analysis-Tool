@@ -1,25 +1,98 @@
+import shutil
+
 import pandas as pd
 from data_preprocessor import *
 from stat_forecasting import *
 
 # DISPLAY HELPERS
 def header(title):
-    print()
-    print("=" * 65)
-    print(title)
-    print("=" * 65)
+    _print_box_title(title, "double")
 
 
 def subheader(title):
+    _print_box_title(title, "single")
+
+
+def _print_box_title(title, style):
+    width = max(36, min(shutil.get_terminal_size((100, 20)).columns - 2, 78))
+    title = str(title)
+    title = title[:width - 6]
+    inner_width = width - 2
+
+    horizontal = "=" if style == "double" else "-"
+
     print()
-    print("-" * 65)
-    print(title)
-    print("-" * 65)
+    print(f"+{horizontal * inner_width}+")
+    print(f"|  {title:<{inner_width - 4}}  |")
+    print(f"+{horizontal * inner_width}+")
+
+
+def _format_cell(value):
+    if value is None or value is pd.NA:
+        return ""
+    if isinstance(value, float):
+        if pd.isna(value):
+            return ""
+        return f"{value:,.0f}" if value.is_integer() else f"{value:,.2f}"
+    if isinstance(value, int):
+        return f"{value:,}"
+    return str(value)
+
+
+def print_table(data):
+    if isinstance(data, pd.Series):
+        data = data.to_frame().reset_index()
+    elif not isinstance(data, pd.DataFrame):
+        data = pd.DataFrame(data)
+
+    if data.empty:
+        print("  (no records)")
+        return
+
+    headers = [str(column) for column in data.columns]
+    rows = [
+        [_format_cell(value) for value in row]
+        for row in data.itertuples(index=False, name=None)
+    ]
+    terminal_width = max(60, shutil.get_terminal_size((100, 20)).columns - 4)
+    max_cell_width = max(10, min(36, (terminal_width - len(headers) * 3) // len(headers)))
+    widths = [
+        min(max_cell_width, max(len(headers[index]), *(len(row[index]) for row in rows)))
+        for index in range(len(headers))
+    ]
+
+    def fit(value, width):
+        if len(value) <= width:
+            return value
+        return value[:width - 3] + "..."
+
+    def border(left, join, right):
+        return left + join.join("-" * (width + 2) for width in widths) + right
+
+    print(border("+", "+", "+"))
+    print("| " + " | ".join(fit(value, width).ljust(width) for value, width in zip(headers, widths)) + " |")
+    print(border("+", "+", "+"))
+    for row in rows:
+        print("| " + " | ".join(fit(value, width).ljust(width) for value, width in zip(row, widths)) + " |")
+    print(border("+", "+", "+"))
+
+
+def print_menu_options(options):
+    print_table(
+        pd.DataFrame(
+            [(key, label) for key, label in options],
+            columns=["KEY", "OPTION"],
+        )
+    )
 
 
 def show_numbered_list(items):
-    for number, item in enumerate(items, start=1):
-        print(f"{number}. {item}")
+    print_table(
+        pd.DataFrame(
+            [(number, item) for number, item in enumerate(items, start=1)],
+            columns=["#", "OPTION"],
+        )
+    )
 
 
 # DATA LOADING
@@ -52,12 +125,14 @@ def dataset_menu(cleaned_data):
 
         header("DATASET")
 
-        print("1. View first records")
-        print("2. View last records")
-        print("3. Dataset information")
-        print("4. View available metrics")
-        print("5. View available states")
-        print("0. Back")
+        print_menu_options([
+            ("1", "View first records"),
+            ("2", "View last records"),
+            ("3", "Dataset information"),
+            ("4", "View available metrics"),
+            ("5", "View available states"),
+            ("0", "Back"),
+        ])
 
         choice = input("\nEnter choice: ").strip()
 
@@ -65,32 +140,26 @@ def dataset_menu(cleaned_data):
 
             subheader("FIRST 10 RECORDS")
 
-            print(cleaned_data.head(10).to_string(index=False))
+            print_table(cleaned_data.head(10))
 
         elif choice == "2":
 
             subheader("LAST 10 RECORDS")
 
-            print(cleaned_data.tail(10).to_string(index=False))
+            print_table(cleaned_data.tail(10))
 
         elif choice == "3":
 
             subheader("DATASET INFORMATION")
 
-            print(f"Rows    : {cleaned_data.shape[0]:,}")
-            print(f"Columns : {cleaned_data.shape[1]}")
-
-            print("\nColumns:")
-
-            for column in cleaned_data.columns:
-                print(f"  - {column}")
-
-            print("\nMissing values:")
-
             missing = cleaned_data.isna().sum()
-
-            for column, count in missing.items():
-                print(f"  {column}: {count:,}")
+            print_table(
+                pd.DataFrame({
+                    "COLUMN": cleaned_data.columns,
+                    "MISSING VALUES": missing.values,
+                })
+            )
+            print(f"\nRows: {cleaned_data.shape[0]:,}  |  Columns: {cleaned_data.shape[1]}")
 
         elif choice == "4":
 
@@ -104,8 +173,7 @@ def dataset_menu(cleaned_data):
                 .tolist()
             )
 
-            for metric in metrics:
-                print(f"- {metric}")
+            show_numbered_list(metrics)
 
         elif choice == "5":
 
@@ -119,8 +187,7 @@ def dataset_menu(cleaned_data):
                 .tolist()
             )
 
-            for state in states:
-                print(f"- {state}")
+            show_numbered_list(states)
 
         elif choice == "0":
             return
@@ -148,7 +215,7 @@ def select_metric(annual_data):
 
     show_numbered_list(metrics)
 
-    print("0. Back")
+    print_menu_options([("0", "Back")])
 
     choice = input("\nEnter choice: ").strip()
 
@@ -205,12 +272,14 @@ def statistical_metric_menu(annual_data, metric):
 
         subheader(metric.upper())
 
-        print("1. Descriptive Statistics")
-        print("2. Trend Analysis")
-        print("3. Year-over-Year Changes")
-        print("4. Period Comparison")
-        print("5. Correlation Analysis")
-        print("0. Back")
+        print_menu_options([
+            ("1", "Descriptive Statistics"),
+            ("2", "Trend Analysis"),
+            ("3", "Year-over-Year Changes"),
+            ("4", "Period Comparison"),
+            ("5", "Correlation Analysis"),
+            ("0", "Back"),
+        ])
 
         choice = input("\nEnter choice: ").strip()
 
@@ -244,14 +313,16 @@ def show_descriptive_statistics(series):
 
     result = descriptive_summary(series)
 
-    print(f"Observations        : {result['observations']}")
-    print(f"Mean                : {result['mean']:,.2f}")
-    print(f"Median              : {result['median']:,.2f}")
-    print(f"Minimum             : {result['minimum']:,.2f}")
-    print(f"Maximum             : {result['maximum']:,.2f}")
-    print(f"Standard Deviation  : {result['standard_deviation']:,.2f}")
-    print(f"First Year          : {result['first_year']}")
-    print(f"Last Year           : {result['last_year']}")
+    print_table(pd.DataFrame([
+        ("Observations", result["observations"]),
+        ("Mean", result["mean"]),
+        ("Median", result["median"]),
+        ("Minimum", result["minimum"]),
+        ("Maximum", result["maximum"]),
+        ("Standard Deviation", result["standard_deviation"]),
+        ("First Year", result["first_year"]),
+        ("Last Year", result["last_year"]),
+    ], columns=["MEASURE", "VALUE"]))
 
     print("\nInterpretation:")
 
@@ -266,12 +337,14 @@ def show_trend_analysis(series):
 
     result = analyze_trend(series)
 
-    print(f"Slope          : {result['slope']:,.2f}")
-    print(f"Intercept      : {result['intercept']:,.2f}")
-    print(f"R²             : {result['r_squared']:.4f}")
-    print(f"P-value        : {result['p_value']:.6f}")
-    print(f"Standard Error : {result['standard_error']:,.2f}")
-    print(f"Observations   : {result['observations']}")
+    print_table(pd.DataFrame([
+        ("Slope", result["slope"]),
+        ("Intercept", result["intercept"]),
+        ("R-squared", f"{result['r_squared']:.4f}"),
+        ("P-value", f"{result['p_value']:.6f}"),
+        ("Standard Error", result["standard_error"]),
+        ("Observations", result["observations"]),
+    ], columns=["MEASURE", "VALUE"]))
 
     print("\nInterpretation:")
 
@@ -294,17 +367,10 @@ def show_yearly_changes(series):
         return
 
     # Show the latest 10 years
-    print(
+    print_table(
         result[
-            [
-                "year",
-                "value",
-                "change",
-                "percentage_change"
-            ]
-        ]
-        .tail(10)
-        .to_string(index=False)
+            ["year", "value", "change", "percentage_change"]
+        ].tail(10)
     )
 
     # Find largest increase and decrease
@@ -316,39 +382,20 @@ def show_yearly_changes(series):
 
         return
 
-    print("\nLargest Increase")
-
-    print(
-        f"Year        : "
-        f"{interpretation['largest_increase_year']}"
-    )
-
-    print(
-        f"Change      : "
-        f"{interpretation['largest_increase']:,.2f}"
-    )
-
-    print(
-        f"Percentage   : "
-        f"{interpretation['largest_increase_percentage']:.2f}%"
-    )
-
-    print("\nLargest Decrease")
-
-    print(
-        f"Year        : "
-        f"{interpretation['largest_decrease_year']}"
-    )
-
-    print(
-        f"Change      : "
-        f"{interpretation['largest_decrease']:,.2f}"
-    )
-
-    print(
-        f"Percentage   : "
-        f"{interpretation['largest_decrease_percentage']:.2f}%"
-    )
+    print_table(pd.DataFrame([
+        (
+            "Largest increase",
+            interpretation["largest_increase_year"],
+            interpretation["largest_increase"],
+            f"{interpretation['largest_increase_percentage']:.2f}%",
+        ),
+        (
+            "Largest decrease",
+            interpretation["largest_decrease_year"],
+            interpretation["largest_decrease"],
+            f"{interpretation['largest_decrease_percentage']:.2f}%",
+        ),
+    ], columns=["CHANGE", "YEAR", "AREA CHANGE", "PERCENTAGE"]))
 
     print("\nInterpretation:")
 
@@ -368,37 +415,14 @@ def show_period_comparison(series):
         )
         return
 
-    print(
-        f"First Period  : "
-        f"{result['first_period'][0]}–"
-        f"{result['first_period'][1]}"
-    )
-
-    print(
-        f"Second Period : "
-        f"{result['second_period'][0]}–"
-        f"{result['second_period'][1]}"
-    )
-
-    print(
-        f"First Mean    : "
-        f"{result['first_mean']:,.2f}"
-    )
-
-    print(
-        f"Second Mean   : "
-        f"{result['second_mean']:,.2f}"
-    )
-
-    print(
-        f"Difference    : "
-        f"{result['difference']:,.2f}"
-    )
-
-    print(
-        f"Percentage Change : "
-        f"{result['percentage_change']:.2f}%"
-    )
+    print_table(pd.DataFrame([
+        ("First Period", f"{result['first_period'][0]}–{result['first_period'][1]}"),
+        ("Second Period", f"{result['second_period'][0]}–{result['second_period'][1]}"),
+        ("First Mean", result["first_mean"]),
+        ("Second Mean", result["second_mean"]),
+        ("Difference", result["difference"]),
+        ("Percentage Change", f"{result['percentage_change']:.2f}%"),
+    ], columns=["MEASURE", "VALUE"]))
 
     print("\nInterpretation:")
 
@@ -437,12 +461,8 @@ def show_correlation_analysis(annual_data, metric):
 
         return
 
-    print("Available variables:")
-
-    for number, column in enumerate(numeric_columns, start=1):
-        print(f"{number}. {column}")
-
-    print("0. Back")
+    show_numbered_list(numeric_columns)
+    print_menu_options([("0", "Back")])
 
     first_choice = input("\nSelect first variable: ").strip()
 
@@ -498,12 +518,13 @@ def show_correlation_analysis(annual_data, metric):
 
         return
 
-    print()
-    print(f"Variable 1   : {first_variable}")
-    print(f"Variable 2   : {second_variable}")
-    print(f"Correlation  : {result['correlation']:.4f}")
-    print(f"P-value      : {result['p_value']:.6f}")
-    print(f"Observations : {result['observations']}")
+    print_table(pd.DataFrame([
+        ("Variable 1", first_variable),
+        ("Variable 2", second_variable),
+        ("Correlation", f"{result['correlation']:.4f}"),
+        ("P-value", f"{result['p_value']:.6f}"),
+        ("Observations", result["observations"]),
+    ], columns=["MEASURE", "VALUE"]))
 
     print("\nInterpretation:")
 
@@ -531,9 +552,11 @@ def forecasting_metric_menu(annual_data, metric):
 
         subheader(metric.upper())
 
-        print("1. Model Evaluation")
-        print("2. Forecast Future Years")
-        print("0. Back")
+        print_menu_options([
+            ("1", "Model Evaluation"),
+            ("2", "Forecast Future Years"),
+            ("0", "Back"),
+        ])
 
         choice = input("\nEnter choice: ").strip()
 
@@ -573,49 +596,16 @@ def show_model_evaluation(series):
         )
         return
 
-    print(
-        f"Training Period : "
-        f"{result['train_start']}–{result['train_end']}"
-    )
-
-    print(
-        f"Validation Period : "
-        f"{result['test_start']}–{result['test_end']}"
-    )
-
-    print("\nLast-Value Baseline")
-
-    print(
-        f"MAE  : "
-        f"{result['baseline_errors']['mae']:,.2f}"
-    )
-
-    print(
-        f"RMSE : "
-        f"{result['baseline_errors']['rmse']:,.2f}"
-    )
-
-    print(
-        f"MAPE : "
-        f"{result['baseline_errors']['mape']:.2f}%"
-    )
-
-    print("\nHolt Linear Trend")
-
-    print(
-        f"MAE  : "
-        f"{result['holt_errors']['mae']:,.2f}"
-    )
-
-    print(
-        f"RMSE : "
-        f"{result['holt_errors']['rmse']:,.2f}"
-    )
-
-    print(
-        f"MAPE : "
-        f"{result['holt_errors']['mape']:.2f}%"
-    )
+    print_table(pd.DataFrame([
+        ("Training Period", f"{result['train_start']}–{result['train_end']}"),
+        ("Validation Period", f"{result['test_start']}–{result['test_end']}"),
+        ("Baseline MAE", result["baseline_errors"]["mae"]),
+        ("Baseline RMSE", result["baseline_errors"]["rmse"]),
+        ("Baseline MAPE", f"{result['baseline_errors']['mape']:.2f}%"),
+        ("Holt MAE", result["holt_errors"]["mae"]),
+        ("Holt RMSE", result["holt_errors"]["rmse"]),
+        ("Holt MAPE", f"{result['holt_errors']['mape']:.2f}%"),
+    ], columns=["MEASURE", "VALUE"]))
 
     print("\nInterpretation:")
 
@@ -627,12 +617,12 @@ def show_forecast(series):
 
     subheader("FUTURE FORECAST")
 
-    print("Forecast horizon:")
-
-    print("1. 3 years")
-    print("2. 5 years")
-    print("3. 10 years")
-    print("0. Back")
+    print_menu_options([
+        ("1", "3 years"),
+        ("2", "5 years"),
+        ("3", "10 years"),
+        ("0", "Back"),
+    ])
 
     choice = input("\nEnter choice: ").strip()
 
@@ -665,16 +655,10 @@ def show_forecast(series):
 
     subheader("FORECAST RESULTS")
 
-    print(
-        f"Selected Model : "
-        f"{result['selected_model']}"
-    )
-
-    print()
-
-    print(
-        result["forecast"].to_string(index=False)
-    )
+    print_table(pd.DataFrame([
+        ("Selected Model", result["selected_model"]),
+    ], columns=["MEASURE", "VALUE"]))
+    print_table(result["forecast"])
 
     print("\nInterpretation:")
 
@@ -690,9 +674,11 @@ def state_district_menu(cleaned_data):
 
         header("STATE / DISTRICT ANALYSIS")
 
-        print("1. State Analysis")
-        print("2. District Analysis")
-        print("0. Back")
+        print_menu_options([
+            ("1", "State Analysis"),
+            ("2", "District Analysis"),
+            ("0", "Back"),
+        ])
 
         choice = input("\nEnter choice: ").strip()
 
@@ -728,7 +714,7 @@ def state_analysis(cleaned_data):
 
     show_numbered_list(states)
 
-    print("0. Back")
+    print_menu_options([("0", "Back")])
 
     choice = input("\nEnter choice: ").strip()
 
@@ -760,19 +746,18 @@ def state_analysis_menu(state_data, state_name):
 
         subheader(f"STATE: {state_name}")
 
-        print("1. Dataset records")
-        print("2. Available districts")
-        print("3. Metric summary")
-        print("0. Back")
+        print_menu_options([
+            ("1", "Dataset records"),
+            ("2", "Available districts"),
+            ("3", "Metric summary"),
+            ("0", "Back"),
+        ])
 
         choice = input("\nEnter choice: ").strip()
 
         if choice == "1":
 
-            print(
-                state_data.head(10)
-                .to_string(index=False)
-            )
+            print_table(state_data.head(10))
 
         elif choice == "2":
 
@@ -784,10 +769,7 @@ def state_analysis_menu(state_data, state_name):
                 .tolist()
             )
 
-            print("\nDistricts:")
-
-            for district in districts:
-                print(f"- {district}")
+            show_numbered_list(districts)
 
         elif choice == "3":
 
@@ -798,9 +780,7 @@ def state_analysis_menu(state_data, state_name):
                 .sort_values(ascending=False)
             )
 
-            print("\nMetric summary:")
-
-            print(summary.to_string())
+            print_table(summary)
 
         elif choice == "0":
 
@@ -826,7 +806,7 @@ def district_analysis(cleaned_data):
 
     show_numbered_list(states)
 
-    print("0. Back")
+    print_menu_options([("0", "Back")])
 
     state_choice = input("\nEnter choice: ").strip()
 
@@ -861,7 +841,7 @@ def district_analysis(cleaned_data):
 
     show_numbered_list(districts)
 
-    print("0. Back")
+    print_menu_options([("0", "Back")])
 
     district_choice = input("\nEnter choice: ").strip()
 
@@ -903,19 +883,18 @@ def district_analysis_menu(
             f"DISTRICT: {district_name}, {state_name}"
         )
 
-        print("1. View records")
-        print("2. Metric summary")
-        print("3. Year-wise data")
-        print("0. Back")
+        print_menu_options([
+            ("1", "View records"),
+            ("2", "Metric summary"),
+            ("3", "Year-wise data"),
+            ("0", "Back"),
+        ])
 
         choice = input("\nEnter choice: ").strip()
 
         if choice == "1":
 
-            print(
-                district_data.head(10)
-                .to_string(index=False)
-            )
+            print_table(district_data.head(10))
 
         elif choice == "2":
 
@@ -926,9 +905,7 @@ def district_analysis_menu(
                 .sort_values(ascending=False)
             )
 
-            print("\nMetric summary:")
-
-            print(summary.to_string())
+            print_table(summary)
 
         elif choice == "3":
 
@@ -939,9 +916,7 @@ def district_analysis_menu(
                 .sort_values("year")
             )
 
-            print(
-                year_data.to_string(index=False)
-            )
+            print_table(year_data)
 
         elif choice == "0":
 
@@ -959,13 +934,15 @@ def eda_menu():
 
     print("EDA and visualization functions will be")
     print("connected here from eda_visualizer.py.")
-    print()
-    print("Available interface section:")
-    print("- Trend visualization")
-    print("- State comparison")
-    print("- District comparison")
-    print("- Land-use category visualization")
-    print("- Cropping pattern visualization")
+    print_table(pd.DataFrame({
+        "AVAILABLE SECTION": [
+            "Trend visualization",
+            "State comparison",
+            "District comparison",
+            "Land-use category visualization",
+            "Cropping pattern visualization",
+        ]
+    }))
 
 
 
@@ -974,32 +951,23 @@ def about_project():
 
     header("ABOUT PROJECT")
 
-    print("Agricultural Land-Use Pattern Analysis Tool")
-    print()
-    print("Project:")
-    print("Analysis of Changing Agricultural Land-Use")
-    print("Patterns Across Indian States and Districts")
-    print()
-    print("This console application provides:")
-    print("- Processed dataset inspection")
-    print("- EDA and visualization access")
-    print("- Statistical analysis")
-    print("- Time-series forecasting")
-    print("- State-level analysis")
-    print("- District-level analysis")
-    print()
-    print("Data source:")
-    print("Ministry of Agriculture and Farmers Welfare")
-    print("Department of Agriculture & Farmers Welfare")
+    print_table(pd.DataFrame([
+        ("Project", "Analysis of Changing Agricultural Land-Use Patterns Across Indian States and Districts"),
+        ("Features", "Processed dataset inspection"),
+        ("Features", "EDA and visualization access"),
+        ("Features", "Statistical analysis"),
+        ("Features", "Time-series forecasting"),
+        ("Features", "State-level analysis"),
+        ("Features", "District-level analysis"),
+        ("Data source", "Ministry of Agriculture and Farmers Welfare"),
+        ("Department", "Department of Agriculture & Farmers Welfare"),
+    ], columns=["DETAIL", "DESCRIPTION"]))
 
 
 # MAIN APPLICATION
 def main():
 
-    print()
-    print("=" * 65)
-    print("AGRICULTURAL LAND-USE PATTERN ANALYSIS TOOL")
-    print("=" * 65)
+    header("AGRICULTURAL LAND-USE PATTERN ANALYSIS TOOL")
 
     cleaned_data, annual_data = load_application_data()
 
@@ -1007,13 +975,15 @@ def main():
 
         header("MAIN MENU")
 
-        print("1. Dataset")
-        print("2. EDA & Visualization")
-        print("3. Statistical Analysis")
-        print("4. Forecasting")
-        print("5. State / District Analysis")
-        print("6. About Project")
-        print("0. Exit")
+        print_menu_options([
+            ("1", "Dataset"),
+            ("2", "EDA & Visualization"),
+            ("3", "Statistical Analysis"),
+            ("4", "Forecasting"),
+            ("5", "State / District Analysis"),
+            ("6", "About Project"),
+            ("0", "Exit"),
+        ])
 
         choice = input("\nEnter choice: ").strip()
 
