@@ -497,6 +497,28 @@ def district_analysis_menu(
 
             print("Invalid choice.")
 
+def about_project():
+
+    header("ABOUT PROJECT")
+
+    print("Agricultural Land-Use Pattern Analysis Tool")
+    print()
+    print("Project:")
+    print("Analysis of Changing Agricultural Land-Use")
+    print("Patterns Across Indian States and Districts")
+    print()
+    print("This console application provides:")
+    print("- Processed dataset inspection")
+    print("- EDA and visualization access")
+    print("- Statistical analysis")
+    print("- Time-series forecasting")
+    print("- State-level analysis")
+    print("- District-level analysis")
+    print()
+    print("Data source:")
+    print("Ministry of Agriculture and Farmers Welfare")
+    print("Department of Agriculture & Farmers Welfare")
+
 # MAIN APPLICATION
 def main():
 
@@ -540,6 +562,10 @@ def main():
         elif choice == "5":
 
             state_district_menu(cleaned_data)
+
+        elif choice == "6":
+
+            about_project()
 
         elif choice == "0":
 

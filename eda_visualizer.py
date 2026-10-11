@@ -1,6 +1,7 @@
 """Exploratory charts for the Agricultural Land-Use Pattern Analysis Tool."""
 
 import matplotlib.pyplot as plt
+import os
 import pandas as pd
 import seaborn as sns
 
@@ -58,8 +59,17 @@ def _header(title):
     _print_line("╰" + "─" * (width - 2) + "╯")
 
 
-def _show(fig):
+OUTPUT_DIR = "eda_outputs"
+
+def _show(fig, filename):
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+
     fig.tight_layout(rect=(0, 0.06, 1, 0.94))
+
+    file_path = os.path.join(OUTPUT_DIR, filename + ".png")
+    fig.savefig(file_path, dpi=300, bbox_inches="tight")
+    print(f"Chart saved: {file_path}")
+
     print("Close the chart window to return to the menu.")
     try:
         plt.show(block=True)
@@ -138,7 +148,7 @@ def plot_national_trends(annual_data):
     crop_axis.legend(title="Measure", fontsize=8)
     fig.suptitle(f"National land-use trends through {latest_year}", fontsize=15, fontweight="bold")
     fig.text(0.01, 0.005, "Interpretations compare first and last available observations; trends do not establish causes.", fontsize=8)
-    _show(fig)
+    _show(fig, "national_trends")
 
 
 def plot_land_use_patterns(cleaned_data):
@@ -195,7 +205,7 @@ def plot_land_use_patterns(cleaned_data):
         _interpret_change("Net sown area share", yearly_metrics.index.tolist(), yearly_metrics["sown_share"].tolist(), "%")
     fig.suptitle("Land-use composition and cropping patterns", fontsize=15, fontweight="bold")
     fig.text(0.01, 0.005, "Composition uses only the four listed classifications. Cropping metrics use districts with all three metrics.", fontsize=8)
-    _show(fig)
+    _show(fig, "land_use_patterns")
 
 
 def plot_state_patterns(cleaned_data):
@@ -227,7 +237,7 @@ def plot_state_patterns(cleaned_data):
     axes[2].tick_params(axis="x", rotation=60)
     fig.suptitle("State reporting-area comparison", fontsize=15, fontweight="bold")
     fig.text(.01, .005, f"States/UTs are ranked in {year}; blank heatmap cells mean no data.", fontsize=8)
-    _show(fig)
+    _show(fig, "state_comparisons")
 
 
 def plot_district_patterns(cleaned_data):
@@ -257,7 +267,7 @@ def plot_district_patterns(cleaned_data):
         _interpret_change(f"{place} reporting area", subset["start_year"].tolist(), subset["area_thousand"].tolist(), " thousand ha")
     fig.suptitle("District reporting-area comparison", fontsize=15, fontweight="bold")
     fig.text(.01, .005, f"Districts are ranked by reporting area in {year}; labels include state/UT.", fontsize=8)
-    _show(fig)
+    _show(fig, "district_comparisons")
 
 
 def plot_district_changes(cleaned_data):
@@ -286,7 +296,7 @@ def plot_district_changes(cleaned_data):
         axis.text(value + (.5 if value >= 0 else -.5), bar.get_y() + bar.get_height()/2, f"{value:+,.1f}", va="center", ha="left" if value >= 0 else "right", fontsize=8)
     print(f"Interpretation — district changes: {changes.idxmax()} had the largest increase ({changes.max()/THOUSAND:+,.1f} thousand ha); {changes.idxmin()} had the largest decrease ({changes.min()/THOUSAND:+,.1f} thousand ha.")
     fig.text(.01, .005, "Only districts with non-missing values in every year are included; changes are descriptive, not causal.", fontsize=8)
-    _show(fig)
+    _show(fig, "district_changes")
 
 def plot_land_use_pie_chart(cleaned_data):
     category_rows = cleaned_data[
@@ -351,7 +361,7 @@ def plot_land_use_pie_chart(cleaned_data):
     largest = breakdown.idxmax()
     print(f"Largest share: {largest} ({breakdown[largest] / total_area * 100:.1f}%).")
 
-    _show(fig)
+    _show(fig, "land_use_pie_chart")
 
 
 def plot_data_quality(cleaned_data):
@@ -390,7 +400,7 @@ def plot_data_quality(cleaned_data):
     print(f"Interpretation — data completeness: {int(rows['missing_area'].sum()):,} of {len(rows):,} rows with a valid year have missing area values ({rows['missing_area'].mean()*100:.2f}%). Missing values are not assumed to mean zero.")
     fig.suptitle("Data quality and reporting-area distribution", fontsize=15, fontweight="bold")
     fig.text(.01, .005, "The distribution uses a logarithmic area axis because reported values vary widely.", fontsize=8)
-    _show(fig)
+    _show(fig, "data_quality")
 
 
 def eda_visualization_menu(cleaned_data, annual_data):
