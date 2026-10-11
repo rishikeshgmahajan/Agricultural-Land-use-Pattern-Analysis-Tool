@@ -1,2 +1,7 @@
 pandas
 streamlit
+numpy
+matplotlib
+seaborn
+scipy
+statsmodels

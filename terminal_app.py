@@ -28,7 +28,6 @@ def _print_line(text):
     except UnicodeEncodeError:
         print(text.translate(ASCII_UI))
 
-
 # DISPLAY HELPERS
 def header(title):
     _print_box_title(title, "double")
@@ -117,7 +116,6 @@ def print_menu_options(options):
         )
     )
 
-
 def show_numbered_list(items):
     print_table(
         pd.DataFrame(
@@ -125,6 +123,10 @@ def show_numbered_list(items):
             columns=["#", "OPTION"],
         )
     )
+
+
+def _input_choice(menu_path):
+    return input(f"\n{menu_path} > Enter choice: ").strip()
 
 
 # DATA LOADING
@@ -139,15 +141,8 @@ def load_application_data():
         Annual aggregated dataset used by statistics and forecasting.
     """
 
-    print("Loading project data...")
-
     member2_data = create_member2_dataset()
     member3_data = create_member3_dataset()
-
-    print(
-        f"Loaded {len(member2_data):,} cleaned records "
-        f"and {len(member3_data):,} annual metric records."
-    )
 
     return member2_data, member3_data
 
@@ -166,7 +161,7 @@ def dataset_menu(cleaned_data):
             ("0", "Back"),
         ])
 
-        choice = input("\nEnter choice: ").strip()
+        choice = _input_choice("Main Menu > Dataset")
 
         if choice == "1":
 
@@ -247,7 +242,7 @@ def state_district_menu(cleaned_data):
             ("0", "Back"),
         ])
 
-        choice = input("\nEnter choice: ").strip()
+        choice = _input_choice("Main Menu > State / District Analysis")
 
         if choice == "1":
 
@@ -283,7 +278,7 @@ def state_analysis(cleaned_data):
 
     print_menu_options([("0", "Back")])
 
-    choice = input("\nEnter choice: ").strip()
+    choice = _input_choice("Main Menu > State / District Analysis > Select State")
 
     if choice == "0":
         return
@@ -320,7 +315,9 @@ def state_analysis_menu(state_data, state_name):
             ("0", "Back"),
         ])
 
-        choice = input("\nEnter choice: ").strip()
+        choice = _input_choice(
+            f"Main Menu > State / District Analysis > State: {state_name}"
+        )
 
         if choice == "1":
 
@@ -375,7 +372,9 @@ def district_analysis(cleaned_data):
 
     print_menu_options([("0", "Back")])
 
-    state_choice = input("\nEnter choice: ").strip()
+    state_choice = _input_choice(
+        "Main Menu > State / District Analysis > Select State"
+    )
 
     if state_choice == "0":
         return
@@ -410,7 +409,9 @@ def district_analysis(cleaned_data):
 
     print_menu_options([("0", "Back")])
 
-    district_choice = input("\nEnter choice: ").strip()
+    district_choice = _input_choice(
+        f"Main Menu > State / District Analysis > State: {selected_state} > Select District"
+    )
 
     if district_choice == "0":
         return
@@ -457,7 +458,10 @@ def district_analysis_menu(
             ("0", "Back"),
         ])
 
-        choice = input("\nEnter choice: ").strip()
+        choice = _input_choice(
+            f"Main Menu > State / District Analysis > "
+            f"{district_name}, {state_name}"
+        )
 
         if choice == "1":
 
@@ -493,34 +497,10 @@ def district_analysis_menu(
 
             print("Invalid choice.")
 
-
-
-
-
-
-# ABOUT PROJECT
-def about_project():
-
-    header("ABOUT PROJECT")
-
-    print_table(pd.DataFrame([
-        ("Project", "Analysis of Changing Agricultural Land-Use Patterns Across Indian States and Districts"),
-        ("Features", "Processed dataset inspection"),
-        ("Features", "EDA and visualization access"),
-        ("Features", "Statistical analysis"),
-        ("Features", "Time-series forecasting"),
-        ("Features", "State-level analysis"),
-        ("Features", "District-level analysis"),
-        ("Data source", "Ministry of Agriculture and Farmers Welfare"),
-        ("Department", "Department of Agriculture & Farmers Welfare"),
-    ], columns=["DETAIL", "DESCRIPTION"]))
-
-
 # MAIN APPLICATION
 def main():
 
     header("AGRICULTURAL LAND-USE PATTERN ANALYSIS TOOL")
-    about_project()
     cleaned_data, annual_data = load_application_data()
 
     while True:
@@ -537,7 +517,7 @@ def main():
             ("0", "Exit"),
         ])
 
-        choice = input("\nEnter choice: ").strip()
+        choice = _input_choice("Main Menu")
 
         if choice == "1":
 
@@ -560,10 +540,6 @@ def main():
         elif choice == "5":
 
             state_district_menu(cleaned_data)
-
-        elif choice == "6":
-
-            about_project()
 
         elif choice == "0":
 

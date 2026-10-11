@@ -1,39 +1,11 @@
-"""
-eda_visualizer.py
-=================
-EDA & visualization module for the Agricultural Land-Use Pattern Analysis Tool.
+"""Exploratory charts for the Agricultural Land-Use Pattern Analysis Tool."""
 
-Uses seaborn + matplotlib. Works with the two datasets that terminal_app.py
-already loads:
-
-    cleaned_data -> create_member2_dataset()  (state / district level rows)
-    annual_data  -> create_member3_dataset()  (national yearly totals per metric)
-
-Every chart is saved as a PNG in the "eda_outputs" folder (next to this file)
-and is also shown in a window when a display is available. On machines
-without a display (SSH, servers) the charts are only saved.
-
-Entry point used by terminal_app.py:
-
-    eda_visualization_menu(cleaned_data, annual_data)
-
-Area values in the source data are treated as hectares.
-"""
-
-import os
-import matplotlib
 import matplotlib.pyplot as plt
-import matplotlib.ticker as mticker
-import numpy as np
 import pandas as pd
 import seaborn as sns
 
 
-
-# ----------------------------------------------------------------------
-# SETTINGS
-# ----------------------------------------------------------------------
-OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "eda_outputs")
+MILLION = 1_000_000
 
 CORE_METRICS = [
     "Reporting Area",
@@ -49,105 +21,50 @@ CLASSIFICATIONS = [
     "Fallow Land",
 ]
 
-MILLION = 1_000_000 # Conversion factor: 1 million hectares = 1,000,000 hectares
+
+ASCII_UI = str.maketrans({
+    "╭": "+",
+    "╮": "+",
+    "╰": "+",
+    "╯": "+",
+    "─": "-",
+    "│": "|",
+    "↩": "<-",
+    "▸": ">",
+    "•": "*",
+    "═": "=",
+    "┬": "+",
+    "┴": "+",
+    "├": "+",
+    "┤": "+",
+    "┼": "+",
+    "–": "-",
+    "÷": "/",
+})
 
 
-sns.set_theme(style="whitegrid", context="notebook", palette="deep")
+def _print_line(text):
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        print(text.translate(ASCII_UI))
 
 
-# ----------------------------------------------------------------------
-# DISPLAY / INPUT HELPERS (same look as terminal_app.py)
-# ----------------------------------------------------------------------
 def _header(title):
-    print()
-    print("=" * 65)
-    print(title)
-    print("=" * 65)
+    width = 66
+    _print_line("")
+    _print_line("╭" + "─" * (width - 2) + "╮")
+    _print_line("│ " + title.center(width - 4) + " │")
+    _print_line("╰" + "─" * (width - 2) + "╯")
 
 
-def _subheader(title):
-    print()
-    print("-" * 65)
-    print(title)
-    print("-" * 65)
-
-
-def _pick_from_list(items, title):
-    """Show a numbered list and return the chosen item (None = back)."""
-    if not items:
-        print("Nothing is available to choose from.")
-        return None
-
-    _subheader(title)
-    for number, item in enumerate(items, start=1):
-        print(f"{number}. {item}")
-    print("0. Back")
-
-    choice = input("\nEnter choice: ").strip()
-
-    if choice == "0":
-        return None
-    if not choice.isdigit() or not 1 <= int(choice) <= len(items):
-        print("Invalid choice.")
-        return None
-    return items[int(choice) - 1]
-
-
-def _ask_int(prompt, default, low, high):
-    """Ask for an integer; Enter keeps the default."""
-    raw = input(f"{prompt} [{default}]: ").strip()
-    if raw == "":
-        return default
-    if raw.isdigit() and low <= int(raw) <= high:
-        return int(raw)
-    print(f"Invalid value, using {default}.")
-    return default
-
-
-def _ask_year(years, prompt="Year"):
-    """Ask for a year from the available list; Enter selects the latest."""
-    years = sorted(int(y) for y in years)
-    latest = years[-1]
-    raw = input(f"{prompt} ({years[0]}-{latest}) [{latest}]: ").strip()
-    if raw == "":
-        return latest
-    if raw.isdigit() and int(raw) in years:
-        return int(raw)
-    print(f"Year not available, using {latest}.")
-    return latest
-
-
-def _finish(fig, filename):
-    """Save the figure, show it if a display exists, then close it."""
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
-    path = os.path.join(OUTPUT_DIR, filename)
-    fig.tight_layout()
-    fig.savefig(path, dpi=150, bbox_inches="tight")
-    print(f"\nChart saved to: {path}")
-
-    if matplotlib.get_backend().lower() != "agg":
-        print("Close the chart window to continue...")
-        plt.show()
-    plt.close(fig)
-
-
-def _slug(text):
-    return "".join(c.lower() if c.isalnum() else "_" for c in str(text)).strip("_")
-
-
-def _million_formatter():
-    return mticker.FuncFormatter(lambda v, _: f"{v / MILLION:,.0f}")
-
-
-# ----------------------------------------------------------------------
-# DATA HELPERS
-# ----------------------------------------------------------------------
-def _categories(cleaned_data):
-    """Core metrics first, then classification sub-categories."""
-    present = set(cleaned_data["category"].dropna().unique())
-    core = [m for m in CORE_METRICS if m in present]
-    others = sorted(present - set(core) - {"Unspecified"})
-    return core + others
+def _show(fig):
+    fig.tight_layout(rect=(0, 0.025, 1, 0.96))
+    print("Close the chart window to return to the menu.")
+    try:
+        plt.show(block=True)
+    finally:
+        plt.close(fig)
 
 
 def _category_rows(cleaned_data, category):
@@ -160,467 +77,548 @@ def _category_rows(cleaned_data, category):
     return rows
 
 
-def _yearly_totals(cleaned_data, category):
-    """National total + number of reporting districts per year."""
-    rows = _category_rows(cleaned_data, category)
-    if rows.empty:
-        return pd.DataFrame(columns=["start_year", "area", "districts"])
-    return (
-        rows.groupby("start_year")
-        .agg(area=("area", "sum"), districts=("district_name", "nunique"))
-        .reset_index()
-    )
-
-
 def _district_year_table(cleaned_data):
-    """Wide table: one row per (year, state, district), one column per category."""
     rows = cleaned_data[
         cleaned_data["area"].notna() & cleaned_data["start_year"].notna()
     ].copy()
     rows["start_year"] = rows["start_year"].astype(int)
-    wide = (
-        rows.groupby(["start_year", "state_name", "district_name", "category"])["area"]
+    table = (
+        rows.groupby(
+            ["start_year", "state_name", "district_name", "category"]
+        )["area"]
         .sum()
         .unstack("category")
         .reset_index()
     )
-    wide.columns.name = None
-    return wide
+    table.columns.name = None
+    return table
 
 
-# ----------------------------------------------------------------------
-# 1. NATIONAL TREND OF ONE CATEGORY
-# ----------------------------------------------------------------------
-def plot_category_trend(cleaned_data):
-    category = _pick_from_list(_categories(cleaned_data), "SELECT LAND-USE CATEGORY")
-    if category is None:
+def _label_last_value(axis, years, values, suffix=""):
+    if len(years) == 0:
         return
-
-    totals = _yearly_totals(cleaned_data, category)
-    if totals.empty:
-        print("No data available for this category.")
-        return
-
-    fig, (ax1, ax2) = plt.subplots(
-        2, 1, figsize=(11, 7), sharex=True, gridspec_kw={"height_ratios": [3, 1]}
+    axis.annotate(
+        f"{values[-1]:,.1f}{suffix}",
+        (years[-1], values[-1]),
+        xytext=(5, 5),
+        textcoords="offset points",
+        fontsize=8,
     )
 
-    sns.lineplot(data=totals, x="start_year", y="area", marker="o", ax=ax1)
-    ax1.yaxis.set_major_formatter(_million_formatter())
-    ax1.set_ylabel("Area (million hectares)")
-    ax1.set_xlabel("")
-    ax1.set_title(f"{category}: reported total area by year")
 
-    ax2.bar(totals["start_year"], totals["districts"], color="#8da0cb")
-    ax2.set_ylabel("Districts\nreporting")
-    ax2.set_xlabel("Year (start of agricultural year)")
-    ax2.tick_params(axis="x", rotation=60)
-
-    fig.text(
-        0.01, 0.005,
-        "Note: totals depend on how many districts reported each year (lower panel).",
-        fontsize=8, style="italic",
-    )
-    _finish(fig, f"trend_{_slug(category)}.png")
+def _label_bars(axis, bars, values, suffix=""):
+    for bar, value in zip(bars, values):
+        axis.text(
+            bar.get_width(),
+            bar.get_y() + bar.get_height() / 2,
+            f" {value:,.1f}{suffix}",
+            va="center",
+            fontsize=8,
+        )
+    if len(values):
+        maximum = max(values)
+        axis.set_xlim(right=maximum * 1.25 if maximum > 0 else 1)
 
 
-# ----------------------------------------------------------------------
-# 2. CORE METRICS TOGETHER
-# ----------------------------------------------------------------------
-def plot_core_metrics(annual_data):
-    data = annual_data[annual_data["land_use_metrics"].isin(CORE_METRICS)].copy()
-    if data.empty:
-        print("No core metric data available.")
+def plot_national_trends(annual_data):
+    core = annual_data[annual_data["land_use_metrics"].isin(CORE_METRICS)].copy()
+    if core.empty:
+        print("There is not enough data to draw the national trends.")
         return
 
-    data["start_year"] = data["start_year"].astype(int)
+    core["start_year"] = core["start_year"].astype(int)
+    core["area_million"] = core["area"] / MILLION
+    latest_year = int(core["start_year"].max())
 
-    fig, ax = plt.subplots(figsize=(11, 6))
+    fig, (reporting_axis, crop_axis) = plt.subplots(1, 2, figsize=(14, 6))
+    reporting = core[core["land_use_metrics"] == "Reporting Area"]
     sns.lineplot(
-        data=data, x="start_year", y="area",
-        hue="land_use_metrics", hue_order=CORE_METRICS,
-        style="land_use_metrics", markers=True, dashes=False, ax=ax,
+        data=reporting,
+        x="start_year",
+        y="area_million",
+        marker="o",
+        color="#1b7837",
+        ax=reporting_axis,
     )
-    ax.yaxis.set_major_formatter(_million_formatter())
-    ax.set_xlabel("Year (start of agricultural year)")
-    ax.set_ylabel("Area (million hectares)")
-    ax.set_title("Core land-use metrics: national totals over time")
-    ax.legend(title="Metric", loc="best")
-    _finish(fig, "core_metrics_trend.png")
+    reporting_axis.set_title("Total reporting area")
+    reporting_axis.set_xlabel("Year (start of agricultural year)")
+    reporting_axis.set_ylabel("Area (million hectares)")
+    if not reporting.empty:
+        reporting_axis.annotate(
+            f"{reporting['area_million'].iloc[-1]:,.1f} million ha",
+            (reporting["start_year"].iloc[-1], reporting["area_million"].iloc[-1]),
+            xytext=(-95, 15),
+            textcoords="offset points",
+            fontsize=8,
+        )
 
+    crop_metrics = ["Net Area Sown", "Cropped Area", "Area Sown More Than Once"]
+    crop_data = core[core["land_use_metrics"].isin(crop_metrics)]
+    for metric in crop_metrics:
+        metric_data = crop_data[crop_data["land_use_metrics"] == metric]
+        if not metric_data.empty:
+            sns.lineplot(
+                data=metric_data,
+                x="start_year",
+                y="area_million",
+                marker="o",
+                label=metric,
+                ax=crop_axis,
+            )
+    crop_axis.set_title("Sown and cropped area")
+    crop_axis.set_xlabel("Year (start of agricultural year)")
+    crop_axis.set_ylabel("Area (million hectares)")
+    crop_axis.legend(title="Measure", fontsize=8)
+    fig.suptitle(
+        f"National land-use trends through {latest_year}",
+        fontsize=15,
+        fontweight="bold",
+    )
+    fig.text(
+        0.01,
+        0.005,
+        "The crop measures are shown separately from reporting area so their trends remain readable.",
+        fontsize=8,
+    )
+    _show(fig)
 
-# ----------------------------------------------------------------------
-# 3. LAND-USE COMPOSITION
-# ----------------------------------------------------------------------
-def plot_land_use_composition(cleaned_data):
-    rows = cleaned_data[
+def plot_land_use_patterns(cleaned_data):
+    category_rows = cleaned_data[
         cleaned_data["area_classification"].isin(CLASSIFICATIONS)
         & cleaned_data["area"].notna()
         & cleaned_data["start_year"].notna()
     ].copy()
-    if rows.empty:
-        print("No classification data available.")
+    if category_rows.empty:
+        print("There is not enough classification data for this view.")
         return
-    rows["start_year"] = rows["start_year"].astype(int)
 
-    table = rows.pivot_table(
-        index="start_year", columns="area_classification",
-        values="area", aggfunc="sum", fill_value=0,
+    category_rows["start_year"] = category_rows["start_year"].astype(int)
+    yearly = category_rows.pivot_table(
+        index="start_year",
+        columns="area_classification",
+        values="area",
+        aggfunc="sum",
+        fill_value=0,
     )
-    table = table[[c for c in CLASSIFICATIONS if c in table.columns]]
-    share = table.div(table.sum(axis=1), axis=0) * 100
+    yearly = yearly[[name for name in CLASSIFICATIONS if name in yearly.columns]]
+    yearly = yearly.loc[yearly.sum(axis=1) > 0]
+    shares = yearly.div(yearly.sum(axis=1), axis=0) * 100
 
-    latest = int(rows["start_year"].max())
-    sub = (
-        rows[rows["start_year"] == latest]
-        .groupby("area_sub_classification")["area"]
+    latest_year = int(category_rows["start_year"].max())
+    latest = category_rows[category_rows["start_year"] == latest_year]
+    breakdown = (
+        latest.groupby("area_classification")["area"]
         .sum()
-        .sort_values()
+        .sort_values(ascending=True)
     )
 
-    fig, (ax1, ax2) = plt.subplots(
-        1, 2, figsize=(15, 6), gridspec_kw={"width_ratios": [3, 2]}
-    )
-
-    colors = sns.color_palette("deep", len(share.columns))
-    ax1.stackplot(share.index, share.T.values, labels=share.columns, colors=colors)
-    ax1.set_xlim(share.index.min(), share.index.max())
-    ax1.set_ylim(0, 100)
-    ax1.set_xlabel("Year (start of agricultural year)")
-    ax1.set_ylabel("Share of classified area (%)")
-    ax1.set_title("Land-use composition over time")
-    ax1.legend(loc="upper center", bbox_to_anchor=(0.5, -0.15), ncol=2, fontsize=8)
-
-    ax2.barh(sub.index, sub.values / MILLION, color="#66a61e")
-    ax2.set_xlabel("Area (million hectares)")
-    ax2.set_title(f"Breakdown by sub-classification ({latest})")
-    ax2.tick_params(axis="y", labelsize=8)
-
-    _finish(fig, "land_use_composition.png")
-
-
-# ----------------------------------------------------------------------
-# 4. CROPPING PATTERN
-# ----------------------------------------------------------------------
-def plot_cropping_pattern(cleaned_data):
-    wide = _district_year_table(cleaned_data)
+    table = _district_year_table(cleaned_data)
     needed = ["Net Area Sown", "Cropped Area", "Reporting Area"]
-    if any(col not in wide.columns for col in needed):
-        print("Required metrics are not available.")
-        return
+    if all(column in table.columns for column in needed):
+        complete = table.dropna(subset=needed)
+        complete = complete[complete["Net Area Sown"] > 0]
+        yearly_metrics = complete.groupby("start_year")[needed].sum()
+        if not yearly_metrics.empty:
+            yearly_metrics["intensity"] = (
+                yearly_metrics["Cropped Area"] / yearly_metrics["Net Area Sown"] * 100
+            )
+            yearly_metrics["sown_share"] = (
+                yearly_metrics["Net Area Sown"]
+                / yearly_metrics["Reporting Area"]
+                * 100
+            )
+    else:
+        yearly_metrics = pd.DataFrame()
 
-    # Only districts that report all three values in the same year, so the
-    # ratios are not distorted by districts that are missing.
-    complete = wide.dropna(subset=needed)
-    complete = complete[complete["Net Area Sown"] > 0]
-    if complete.empty:
-        print("Not enough complete records.")
-        return
+    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+    composition_axis, breakdown_axis, intensity_axis, sown_axis = axes.flatten()
 
-    yearly = complete.groupby("start_year")[needed].sum()
-    intensity = yearly["Cropped Area"] / yearly["Net Area Sown"] * 100
-    sown_share = yearly["Net Area Sown"] / yearly["Reporting Area"] * 100
+    axes_colors = sns.color_palette("deep", len(shares.columns))
+    composition_axis.stackplot(
+        shares.index,
+        shares.T.values,
+        labels=shares.columns,
+        colors=axes_colors,
+    )
+    composition_axis.set_ylim(0, 100)
+    composition_axis.set_title("Share of classified land over time")
+    composition_axis.set_xlabel("Year (start of agricultural year)")
+    composition_axis.set_ylabel("Share of classified area (%)")
+    composition_axis.legend(fontsize=7, loc="lower left")
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5.5))
+    breakdown_values = breakdown.values / MILLION
+    bars = breakdown_axis.barh(breakdown.index, breakdown_values, color="#66a061")
+    breakdown_axis.set_title(f"Classified area by type in {latest_year}")
+    breakdown_axis.set_xlabel("Area (million hectares)")
+    breakdown_axis.set_ylabel("Classification")
+    _label_bars(breakdown_axis, bars, breakdown_values)
 
-    sns.lineplot(x=intensity.index, y=intensity.values,
-                 marker="o", color="#d95f02", ax=ax1)
-    ax1.set_title("Cropping intensity\n(Cropped Area / Net Area Sown x 100)")
-    ax1.set_xlabel("Year (start of agricultural year)")
-    ax1.set_ylabel("Percent")
+    if yearly_metrics.empty:
+        intensity_axis.text(
+            0.5, 0.5, "Not enough complete records", ha="center", va="center"
+        )
+        sown_axis.text(
+            0.5, 0.5, "Not enough complete records", ha="center", va="center"
+        )
+    else:
+        intensity_axis.plot(
+            yearly_metrics.index,
+            yearly_metrics["intensity"],
+            marker="o",
+            color="#d95f02",
+        )
+        intensity_axis.set_title("Cropping intensity")
+        intensity_axis.set_xlabel("Year (start of agricultural year)")
+        intensity_axis.set_ylabel("Cropped area ÷ net sown area (%)")
+        _label_last_value(
+            intensity_axis,
+            yearly_metrics.index.tolist(),
+            yearly_metrics["intensity"].tolist(),
+            "%",
+        )
 
-    sns.lineplot(x=sown_share.index, y=sown_share.values,
-                 marker="o", color="#1b9e77", ax=ax2)
-    ax2.set_title("Net Area Sown as share of Reporting Area")
-    ax2.set_xlabel("Year (start of agricultural year)")
-    ax2.set_ylabel("Percent")
+        sown_axis.plot(
+            yearly_metrics.index,
+            yearly_metrics["sown_share"],
+            marker="o",
+            color="#1b9e77",
+        )
+        sown_axis.set_title("Net sown area as a share of reporting area")
+        sown_axis.set_xlabel("Year (start of agricultural year)")
+        sown_axis.set_ylabel("Share (%)")
+        _label_last_value(
+            sown_axis,
+            yearly_metrics.index.tolist(),
+            yearly_metrics["sown_share"].tolist(),
+            "%",
+        )
 
+    fig.suptitle("Land-use composition and cropping patterns", fontsize=15, fontweight="bold")
     fig.text(
-        0.01, 0.005,
-        "Based only on districts reporting all three metrics in that year.",
-        fontsize=8, style="italic",
+        0.01,
+        0.005,
+        "Cropping measures include districts with all three reported metrics in a year.",
+        fontsize=8,
     )
-    _finish(fig, "cropping_pattern.png")
+    _show(fig)
 
-
-# ----------------------------------------------------------------------
-# 5. STATE COMPARISON (BAR)
-# ----------------------------------------------------------------------
-def plot_state_comparison(cleaned_data):
-    category = _pick_from_list(_categories(cleaned_data), "SELECT LAND-USE CATEGORY")
-    if category is None:
-        return
-
-    rows = _category_rows(cleaned_data, category)
+def plot_state_patterns(cleaned_data):
+    rows = _category_rows(cleaned_data, "Reporting Area")
     if rows.empty:
-        print("No data available for this category.")
+        print("There is no state-level reporting-area data.")
         return
 
-    year = _ask_year(rows["start_year"].unique())
-    top_n = _ask_int("Number of states to show", 15, 3, 36)
-
-    by_state = (
-        rows[rows["start_year"] == year]
-        .groupby("state_name")["area"].sum()
-        .sort_values(ascending=False)
-        .head(top_n)
-    )
-    if by_state.empty:
-        print("No data for that year.")
-        return
-
-    fig, ax = plt.subplots(figsize=(10, 0.45 * len(by_state) + 2))
-    sns.barplot(x=by_state.values / MILLION, y=by_state.index.tolist(),
-                hue=by_state.index.tolist(), palette="viridis",
-                legend=False, ax=ax)
-    ax.set_xlabel("Area (million hectares)")
-    ax.set_ylabel("")
-    ax.set_title(f"{category}: top {len(by_state)} states, {year}")
-    _finish(fig, f"states_{_slug(category)}_{year}.png")
-
-
-# ----------------------------------------------------------------------
-# 6. STATE TRENDS (LINES)
-# ----------------------------------------------------------------------
-def plot_state_trends(cleaned_data):
-    category = _pick_from_list(_categories(cleaned_data), "SELECT LAND-USE CATEGORY")
-    if category is None:
-        return
-
-    rows = _category_rows(cleaned_data, category)
-    if rows.empty:
-        print("No data available for this category.")
-        return
-
-    top_n = _ask_int("Number of states to compare", 6, 2, 10)
-    latest = rows["start_year"].max()
+    year = int(rows["start_year"].max())
     ranking = (
-        rows[rows["start_year"] == latest]
-        .groupby("state_name")["area"].sum()
+        rows[rows["start_year"] == year]
+        .groupby("state_name")["area"]
+        .sum()
         .sort_values(ascending=False)
     )
-    chosen = ranking.head(top_n).index.tolist()
+    chosen_states = ranking.head(10).index.tolist()
+    if not chosen_states:
+        print(f"There is no state data for {year}.")
+        return
 
+    trend = rows[rows["state_name"].isin(chosen_states)]
     trend = (
-        rows[rows["state_name"].isin(chosen)]
-        .groupby(["start_year", "state_name"])["area"].sum()
+        trend.groupby(["start_year", "state_name"])["area"]
+        .sum()
         .reset_index()
     )
+    trend["area_million"] = trend["area"] / MILLION
+    heatmap_data = trend.pivot(
+        index="state_name", columns="start_year", values="area"
+    ).reindex(chosen_states)
+    heatmap_data = heatmap_data / MILLION
 
-    fig, ax = plt.subplots(figsize=(11, 6))
-    sns.lineplot(data=trend, x="start_year", y="area", hue="state_name",
-                 hue_order=chosen, marker="o", ax=ax)
-    ax.yaxis.set_major_formatter(_million_formatter())
-    ax.set_xlabel("Year (start of agricultural year)")
-    ax.set_ylabel("Area (million hectares)")
-    ax.set_title(f"{category}: largest {len(chosen)} states (ranked by {int(latest)})")
-    ax.legend(title="State", fontsize=8, loc="center left", bbox_to_anchor=(1, 0.5))
-    _finish(fig, f"state_trends_{_slug(category)}.png")
-
-
-# ----------------------------------------------------------------------
-# 7. STATE x YEAR HEATMAP
-# ----------------------------------------------------------------------
-def plot_state_heatmap(cleaned_data):
-    category = _pick_from_list(_categories(cleaned_data), "SELECT LAND-USE CATEGORY")
-    if category is None:
-        return
-
-    rows = _category_rows(cleaned_data, category)
-    if rows.empty:
-        print("No data available for this category.")
-        return
-
-    top_n = _ask_int("Number of states to show", 15, 3, 36)
-    table = rows.pivot_table(index="state_name", columns="start_year",
-                             values="area", aggfunc="sum")
-    table = table.loc[table.sum(axis=1).sort_values(ascending=False).head(top_n).index]
-    table = table / MILLION
-
-    fig, ax = plt.subplots(figsize=(14, 0.45 * len(table) + 3))
-    sns.heatmap(table, cmap="YlGn", linewidths=0.3, linecolor="white",
-                cbar_kws={"label": "Million hectares"}, ax=ax)
-    ax.set_xlabel("Year (start of agricultural year)")
-    ax.set_ylabel("")
-    ax.set_title(f"{category}: state x year (blank = no data)")
-    _finish(fig, f"state_heatmap_{_slug(category)}.png")
-
-
-# ----------------------------------------------------------------------
-# 8. DISTRICT COMPARISON
-# ----------------------------------------------------------------------
-def plot_district_comparison(cleaned_data):
-    states = sorted(cleaned_data["state_name"].dropna().unique().tolist())
-    state = _pick_from_list(states, "SELECT STATE")
-    if state is None:
-        return
-
-    category = _pick_from_list(_categories(cleaned_data), "SELECT LAND-USE CATEGORY")
-    if category is None:
-        return
-
-    rows = _category_rows(cleaned_data, category)
-    rows = rows[rows["state_name"] == state]
-    if rows.empty:
-        print("No data available for this state and category.")
-        return
-
-    year = _ask_year(rows["start_year"].unique())
-    top_n = _ask_int("Number of districts to show", 15, 3, 40)
-
-    by_district = (
-        rows[rows["start_year"] == year]
-        .groupby("district_name")["area"].sum()
-        .sort_values(ascending=False)
-        .head(top_n)
+    fig, axes = plt.subplots(1, 3, figsize=(18, max(6, len(chosen_states) * 0.42)))
+    bar_axis, trend_axis, heatmap_axis = axes
+    bar_values = ranking.head(10).values / MILLION
+    bars = bar_axis.barh(
+        chosen_states[::-1],
+        bar_values[::-1],
+        color=sns.color_palette("viridis", len(chosen_states)),
     )
-    if by_district.empty:
-        print("No data for that year.")
-        return
+    bar_axis.set_title(f"Top states in {year}")
+    bar_axis.set_xlabel("Area (million hectares)")
+    bar_axis.set_ylabel("State")
+    _label_bars(bar_axis, bars, bar_values[::-1])
 
-    fig, ax = plt.subplots(figsize=(10, 0.45 * len(by_district) + 2))
-    sns.barplot(x=by_district.values / 1000, y=by_district.index.tolist(),
-                hue=by_district.index.tolist(), palette="mako",
-                legend=False, ax=ax)
-    ax.set_xlabel("Area (thousand hectares)")
-    ax.set_ylabel("")
-    ax.set_title(f"{state}: top {len(by_district)} districts, {category} ({year})")
-    _finish(fig, f"districts_{_slug(state)}_{_slug(category)}_{year}.png")
+    trend_states = chosen_states[:5]
+    trend = trend[trend["state_name"].isin(trend_states)]
+    sns.lineplot(
+        data=trend,
+        x="start_year",
+        y="area_million",
+        hue="state_name",
+        hue_order=trend_states,
+        marker="o",
+        ax=trend_axis,
+    )
+    trend_axis.set_title("Trends for the five largest states")
+    trend_axis.set_xlabel("Year (start of agricultural year)")
+    trend_axis.set_ylabel("Area (million hectares)")
+    trend_axis.legend(title="State", fontsize=7, loc="best")
 
+    sns.heatmap(
+        heatmap_data.loc[chosen_states],
+        cmap="YlGn",
+        linewidths=0.25,
+        linecolor="white",
+        cbar_kws={"label": "Million hectares"},
+        ax=heatmap_axis,
+    )
+    heatmap_axis.set_title("State area by year")
+    heatmap_axis.set_xlabel("Year (start of agricultural year)")
+    heatmap_axis.set_ylabel("State")
+    heatmap_axis.tick_params(axis="x", rotation=60)
 
-# ----------------------------------------------------------------------
-# 9. DISTRIBUTION ACROSS DISTRICTS
-# ----------------------------------------------------------------------
-def plot_distribution(cleaned_data):
-    category = _pick_from_list(_categories(cleaned_data), "SELECT LAND-USE CATEGORY")
-    if category is None:
-        return
+    fig.suptitle("State reporting-area comparison", fontsize=15, fontweight="bold")
+    fig.text(
+        0.01,
+        0.005,
+        f"Showing up to 10 states ranked in {year}; blank heatmap cells mean no data.",
+        fontsize=8,
+    )
+    _show(fig)
 
-    rows = _category_rows(cleaned_data, category)
-    rows = rows[rows["area"] > 0]
+def plot_district_patterns(cleaned_data):
+    rows = _category_rows(cleaned_data, "Reporting Area")
     if rows.empty:
-        print("No positive values available for this category.")
+        print("There is no district-level reporting-area data.")
         return
 
-    years = sorted(rows["start_year"].unique())
-    shown_years = years[::5]
-    if years[-1] not in shown_years:
-        shown_years.append(years[-1])
-    subset = rows[rows["start_year"].isin(shown_years)]
-
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
-
-    sns.boxplot(data=subset, x="start_year", y="area", color="#a6cee3",
-                fliersize=2, ax=ax1)
-    ax1.set_yscale("log")
-    ax1.set_xlabel("Year (start of agricultural year)")
-    ax1.set_ylabel("District area (hectares, log scale)")
-    ax1.set_title(f"{category}: district-level spread")
-
-    latest = subset[subset["start_year"] == shown_years[-1]]
-    sns.histplot(latest["area"], log_scale=True, bins=35, kde=True,
-                 color="#1f78b4", ax=ax2)
-    ax2.set_xlabel("District area (hectares, log scale)")
-    ax2.set_ylabel("Number of districts")
-    ax2.set_title(f"Distribution in {shown_years[-1]}")
-
-    _finish(fig, f"distribution_{_slug(category)}.png")
-
-
-# ----------------------------------------------------------------------
-# 10. CORRELATION HEATMAP
-# ----------------------------------------------------------------------
-def plot_correlation_heatmap(cleaned_data):
-    wide = _district_year_table(cleaned_data)
-    columns = [c for c in _categories(cleaned_data) if c in wide.columns]
-    numeric = wide[columns]
-    if numeric.dropna(how="all").shape[0] < 10 or len(columns) < 2:
-        print("Not enough data for a correlation matrix.")
+    year = int(rows["start_year"].max())
+    ranking = (
+        rows[rows["start_year"] == year]
+        .groupby(["state_name", "district_name"])["area"]
+        .sum()
+        .sort_values(ascending=False)
+    )
+    chosen_districts = ranking.head(10).index.tolist()
+    if not chosen_districts:
+        print(f"There is no district data for {year}.")
         return
 
-    corr = numeric.corr(min_periods=10)
+    rows["place"] = rows["district_name"] + ", " + rows["state_name"]
+    chosen_places = [f"{district}, {state}" for state, district in chosen_districts]
+    trend = rows[rows["place"].isin(chosen_places)]
+    trend = trend[trend["place"].isin(chosen_places[:5])]
+    trend = (
+        trend.groupby(["start_year", "place"])["area"]
+        .sum()
+        .reset_index()
+    )
+    trend["area_thousand"] = trend["area"] / 1000
 
-    fig, ax = plt.subplots(figsize=(11, 9))
-    sns.heatmap(corr, annot=True, fmt=".2f", cmap="coolwarm", vmin=-1, vmax=1,
-                square=True, linewidths=0.5, cbar_kws={"label": "Pearson r"}, ax=ax)
-    ax.set_title("Correlation between land-use categories\n(district-year level)")
-    ax.set_xlabel("")
-    ax.set_ylabel("")
-    ax.tick_params(axis="x", rotation=45)
-    plt.setp(ax.get_xticklabels(), ha="right")
-    _finish(fig, "correlation_heatmap.png")
+    fig, (bar_axis, trend_axis) = plt.subplots(1, 2, figsize=(15, 7))
+    values = ranking.head(10).values / 1000
+    labels = chosen_places
+    bars = bar_axis.barh(
+        labels[::-1],
+        values[::-1],
+        color=sns.color_palette("mako", len(labels)),
+    )
+    bar_axis.set_title(f"Top districts across India in {year}")
+    bar_axis.set_xlabel("Area (thousand hectares)")
+    bar_axis.set_ylabel("District")
+    _label_bars(bar_axis, bars, values[::-1])
 
+    sns.lineplot(
+        data=trend,
+        x="start_year",
+        y="area_thousand",
+        hue="place",
+        hue_order=chosen_places[:5],
+        marker="o",
+        ax=trend_axis,
+    )
+    trend_axis.set_title("Trends for the five largest districts")
+    trend_axis.set_xlabel("Year (start of agricultural year)")
+    trend_axis.set_ylabel("Area (thousand hectares)")
+    trend_axis.legend(title="District", fontsize=7, loc="best")
 
-# ----------------------------------------------------------------------
-# 11. DATA QUALITY / MISSING VALUES
-# ----------------------------------------------------------------------
-def plot_missing_values(cleaned_data):
+    fig.suptitle(
+        "District reporting-area comparison",
+        fontsize=15,
+        fontweight="bold",
+    )
+    fig.text(
+        0.01,
+        0.005,
+        f"Districts are ranked by reporting area in {year}; labels include the state.",
+        fontsize=8,
+    )
+    _show(fig)
+
+def plot_data_quality(cleaned_data):
     rows = cleaned_data[cleaned_data["start_year"].notna()].copy()
     rows["start_year"] = rows["start_year"].astype(int)
-    rows["missing"] = rows["area"].isna()
+    rows["missing_area"] = rows["area"].isna()
+    missing_by_category = (
+        rows.groupby("category")["missing_area"].mean().mul(100).sort_values()
+    )
+    missing_by_year = rows.groupby("start_year")["missing_area"].mean().mul(100)
 
-    by_category = rows.groupby("category")["missing"].mean().mul(100).sort_values()
-    by_year = rows.groupby("start_year")["missing"].mean().mul(100)
+    usable_rows = cleaned_data[
+        cleaned_data["area"].notna()
+        & cleaned_data["start_year"].notna()
+        & (cleaned_data["area"] > 0)
+    ].copy()
+    if usable_rows.empty:
+        print("There are no positive area values to summarize.")
+        return
+    usable_rows["start_year"] = usable_rows["start_year"].astype(int)
+    reporting_rows = usable_rows[
+        usable_rows["land_use_metrics"] == "Reporting Area"
+    ]
+    if reporting_rows.empty:
+        print("There are no positive reporting-area values to summarize.")
+        return
+    latest_year = int(reporting_rows["start_year"].max())
+    latest_values = reporting_rows[reporting_rows["start_year"] == latest_year]
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+    fig, axes = plt.subplots(2, 2, figsize=(16, 10))
+    distribution_axis, missing_category_axis = axes[0]
+    missing_year_axis, summary_axis = axes[1]
 
-    ax1.barh(by_category.index, by_category.values, color="#fc8d62")
-    ax1.set_xlabel("Missing area values (%)")
-    ax1.set_title("Missing values by land-use category")
-    ax1.tick_params(axis="y", labelsize=8)
+    sns.histplot(
+        latest_values["area"],
+        bins=30,
+        color="#1f78b4",
+        ax=distribution_axis,
+    )
+    distribution_axis.set_xscale("log")
+    distribution_axis.set_title(f"Reporting-area values in {latest_year}")
+    distribution_axis.set_xlabel("Area (hectares, logarithmic scale)")
+    distribution_axis.set_ylabel("Number of records")
+    distribution_axis.text(
+        0.98,
+        0.95,
+        f"Records: {len(latest_values):,}\n"
+        f"Median: {latest_values['area'].median():,.0f} ha",
+        transform=distribution_axis.transAxes,
+        ha="right",
+        va="top",
+        fontsize=8,
+    )
 
-    ax2.bar(by_year.index, by_year.values, color="#8da0cb")
-    ax2.set_xlabel("Year (start of agricultural year)")
-    ax2.set_ylabel("Missing area values (%)")
-    ax2.set_title("Missing values by year")
-    ax2.tick_params(axis="x", rotation=60)
+    category_names = missing_by_category.index.tolist()
+    display_names = [
+        "Misc. tree crops and groves" if name.startswith("Land under Misc.")
+        else "Other uncultivated land" if name.startswith("Other Uncultivated")
+        else name
+        for name in category_names
+    ]
+    missing_category_values = missing_by_category.values
+    category_bars = missing_category_axis.barh(
+        display_names,
+        missing_category_values,
+        color="#fc8d62",
+    )
+    missing_category_axis.set_title("Missing area records by category")
+    missing_category_axis.set_xlabel("Records with missing area (%)")
+    missing_category_axis.set_ylabel("Land-use category")
+    _label_bars(
+        missing_category_axis,
+        category_bars,
+        missing_category_values,
+        "%",
+    )
+    missing_category_axis.tick_params(axis="y", labelsize=8)
 
-    _finish(fig, "missing_values.png")
+    missing_year_axis.plot(
+        missing_by_year.index,
+        missing_by_year.values,
+        marker="o",
+        color="#756bb1",
+    )
+    missing_year_axis.set_title("Missing area records by year")
+    missing_year_axis.set_xlabel("Year (start of agricultural year)")
+    missing_year_axis.set_ylabel("Records with missing area (%)")
+    _label_last_value(
+        missing_year_axis,
+        missing_by_year.index.tolist(),
+        missing_by_year.values.tolist(),
+        "%",
+    )
 
+    missing_year_axis.tick_params(axis="x", rotation=45)
+    summary_axis.set_facecolor("#f2f6f2")
+    summary_axis.set_title("Data at a glance")
+    summary_axis.set_xticks([])
+    summary_axis.set_yticks([])
+    summary_axis.text(
+        0.08,
+        0.82,
+        "RECORDS REVIEWED",
+        transform=summary_axis.transAxes,
+        fontsize=9,
+        color="#526357",
+        weight="bold",
+    )
+    summary_axis.text(
+        0.08,
+        0.70,
+        f"{len(rows):,}",
+        transform=summary_axis.transAxes,
+        fontsize=20,
+        color="#214e34",
+    )
+    summary_axis.text(
+        0.08,
+        0.52,
+        f"Area reported: {rows['area'].notna().sum():,}\n"
+        f"Area missing: {int(rows['missing_area'].sum()):,} "
+        f"({rows['missing_area'].mean() * 100:.1f}%)\n"
+        f"Latest reporting year: {latest_year}\n"
+        f"Median reporting area: {latest_values['area'].median():,.0f} ha",
+        transform=summary_axis.transAxes,
+        fontsize=11,
+        linespacing=1.8,
+        va="top",
+    )
+    fig.suptitle(
+        "Data quality and reporting-area distribution",
+        fontsize=15,
+        fontweight="bold",
+    )
+    fig.text(
+        0.01,
+        0.005,
+        "The distribution uses a logarithmic area axis because reported values vary widely.",
+        fontsize=8,
+    )
+    _show(fig)
 
-# ----------------------------------------------------------------------
-# MENU (called from terminal_app.py)
-# ----------------------------------------------------------------------
 def eda_visualization_menu(cleaned_data, annual_data):
-    """Interactive EDA & visualization menu."""
-
-    actions = {
-        "1": ("Trend of a land-use category (national)", lambda: plot_category_trend(cleaned_data)),
-        "2": ("Core metrics comparison", lambda: plot_core_metrics(annual_data)),
-        "3": ("Land-use composition", lambda: plot_land_use_composition(cleaned_data)),
-        "4": ("Cropping pattern (intensity)", lambda: plot_cropping_pattern(cleaned_data)),
-        "5": ("State comparison (bar chart)", lambda: plot_state_comparison(cleaned_data)),
-        "6": ("State trends (line chart)", lambda: plot_state_trends(cleaned_data)),
-        "7": ("State x year heatmap", lambda: plot_state_heatmap(cleaned_data)),
-        "8": ("District comparison within a state", lambda: plot_district_comparison(cleaned_data)),
-        "9": ("Distribution across districts", lambda: plot_distribution(cleaned_data)),
-        "10": ("Correlation heatmap", lambda: plot_correlation_heatmap(cleaned_data)),
-        "11": ("Missing values overview", lambda: plot_missing_values(cleaned_data)),
-    }
-
     while True:
         _header("EDA & VISUALIZATION")
+        _print_line("  1  ▸ National trends")
+        _print_line("  2  ▸ Land-use and cropping patterns")
+        _print_line("  3  ▸ State comparisons")
+        _print_line("  4  ▸ District comparisons")
+        _print_line("  5  ▸ Data quality overview")
+        _print_line("  0  ↩ Back")
 
-        for key, (label, _) in actions.items():
-            print(f"{key}. {label}")
-        print("0. Back")
-
-        choice = input("\nEnter choice: ").strip()
-
+        choice = input(
+            "\nMain Menu > EDA & Visualization > Enter choice: "
+        ).strip()
         if choice == "0":
             return
-
-        if choice not in actions:
-            print("Invalid choice. Please select one of the available options.")
-            continue
-
-        try:
-            actions[choice][1]()
-        except (EOFError, KeyboardInterrupt):
-            raise
-        except Exception as error:  # keep the terminal app alive
-            plt.close("all")
-            print(f"\nCould not create the chart: {error}")
+        if choice == "1":
+            plot_national_trends(annual_data)
+        elif choice == "2":
+            plot_land_use_patterns(cleaned_data)
+        elif choice == "3":
+            plot_state_patterns(cleaned_data)
+        elif choice == "4":
+            plot_district_patterns(cleaned_data)
+        elif choice == "5":
+            plot_data_quality(cleaned_data)
+        else:
+            print("Please select one of the listed options.")
 
 
 if __name__ == "__main__":

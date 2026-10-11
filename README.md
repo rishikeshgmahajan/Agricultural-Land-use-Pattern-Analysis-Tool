@@ -114,7 +114,18 @@ Main functions:
 
 Responsible for Exploratory Data Analysis and visualization.
 
-It provides interactive options to generate charts, compare trends, inspect land-use patterns, and examine data quality.
+The EDA menu has five direct options and does not open category, year, state, or
+district submenus. It uses the latest available year and selects the largest
+regions automatically, keeping the number of chart windows to five:
+
+- National land-use trends
+- Land-use composition and cropping patterns
+- State comparisons
+- District comparisons
+- Data quality and district-area distribution
+
+Each view uses titled subplots, clear units, and short annotations. Charts open
+in a window and are not saved to files.
 
 ### `stat_forecasting.py`
 
@@ -138,13 +149,14 @@ Contains the application interface scaffold.
 
 ### Install dependencies
 
-Open a terminal in the project directory and run:
+Open a terminal in the project directory and install the listed dependencies:
 
 ```bash
-pip install pandas numpy matplotlib seaborn scipy statsmodels
+pip install -r requirements.txt
 ```
 
-If the interface in `app.py` uses additional packages, install those packages as well.
+The console EDA charts use Matplotlib and Seaborn. Streamlit is required to run
+the optional web interface in `app.py`.
 
 ## 10. How to Run
 

@@ -1,9 +1,6 @@
 import os
 import pandas as pd
 
-DATA_PATH = os.path.join(os.path.dirname(__file__), "classification-of-area.csv")
-
-
 def preprocess_data(df: pd.DataFrame) -> pd.DataFrame:
     data = df.copy()
 
@@ -68,7 +65,7 @@ def preprocess_data(df: pd.DataFrame) -> pd.DataFrame:
 
 def create_member2_dataset(data: pd.DataFrame | None = None) -> pd.DataFrame:
     if data is None:
-        data = pd.read_csv(DATA_PATH)
+        data = pd.read_csv("classification-of-area.csv")
     return preprocess_data(data)
 
 
