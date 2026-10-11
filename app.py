@@ -1,3 +1,5 @@
+import os
+
 import pandas as pd
 import streamlit as st
 from data_preprocessor import preprocess_data
@@ -286,7 +288,10 @@ st.markdown(
 )
 
 # 3. Data loading
-DATA_PATH = "classification-of-area.csv"
+DATA_PATH = os.path.join(
+    os.path.dirname(__file__),
+    "classification-of-area.csv",
+)
 
 
 @st.cache_data
@@ -697,6 +702,13 @@ def forecasting_page():
         "Examine historical changes and explore possible future trajectories.",
     )
 
+    metrics = sorted(
+        df["land_use_metrics"].dropna().astype(str).unique()
+    )
+    if not metrics:
+        st.warning("No land-use metrics are available for analysis.")
+        return
+
     st.markdown(
         '<div class="section-eyebrow">Forecast controls</div>',
         unsafe_allow_html=True,
@@ -704,73 +716,102 @@ def forecasting_page():
     st.subheader("Choose a forecast series")
 
     col1, col2 = st.columns(2)
-
     with col1:
-        metric = st.selectbox(
-            "Land-use measure",
-            [
-                "Net Area Sown",
-                "Cropped Area",
-                "Area Sown More Than Once",
-            ],
-        )
-
+        metric = st.selectbox("Land-use measure", metrics)
     with col2:
         horizon = st.selectbox(
             "Forecast horizon",
             [5, 10],
-            index=0,
             format_func=lambda years: f"{years} years",
         )
 
-    st.write("")
-    st.markdown(
-        f"""
-        <div class="info-card">
-            <div class="section-eyebrow">Current selection</div>
-            <div class="info-card-title">{metric}</div>
-            <div class="info-card-text">
-                Forecast period: {horizon} years · The results area below
-                will display model outputs when the forecasting module is connected.
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    annual_data = (
+        df[df["land_use_metrics"].astype(str) == metric]
+        .dropna(subset=["start_year", "area"])
+        .groupby("start_year", as_index=False)["area"]
+        .sum()
+        .rename(columns={"start_year": "year", "area": "value"})
     )
 
-    st.write("")
+    if annual_data.empty:
+        st.warning("There is not enough valid data for this metric.")
+        return
+
+    try:
+        from stat_forecasting import (
+            analyze_trend,
+            descriptive_summary,
+            forecast_annual,
+            interpret_trend,
+            rolling_origin_validation,
+        )
+    except ImportError as error:
+        st.error(
+            "Statistics and forecasting dependencies are unavailable: "
+            f"{error}"
+        )
+        return
+
+    summary = descriptive_summary(annual_data)
+    trend = analyze_trend(annual_data)
+    forecast_result = forecast_annual(
+        annual_data,
+        periods=horizon,
+        validation_size=5,
+    )
+
     tab1, tab2, tab3 = st.tabs(
-        [
-            "Statistical Summary",
-            "Forecast Results",
-            "Model Evaluation",
-        ]
+        ["Statistical Summary", "Forecast Results", "Model Evaluation"]
     )
 
     with tab1:
         st.subheader("Statistical summary")
-        st.info(
-            "Trend statistics, diagnostics, and appropriate hypothesis-test "
-            "results will appear here."
+        summary_columns = st.columns(4)
+        summary_columns[0].metric("Observations", summary["observations"])
+        summary_columns[1].metric("Average area", f"{summary['mean']:,.2f}")
+        summary_columns[2].metric("Minimum", f"{summary['minimum']:,.2f}")
+        summary_columns[3].metric("Maximum", f"{summary['maximum']:,.2f}")
+        st.dataframe(
+            pd.DataFrame([summary]),
+            use_container_width=True,
+            hide_index=True,
         )
+        st.write(interpret_trend(trend)["summary"])
 
     with tab2:
-        st.subheader("Forecast table and intervals")
-        st.info(
-            "Forecast values and supported prediction intervals will "
-            "appear here."
-        )
+        st.subheader("Forecast table")
+        if forecast_result is None:
+            st.warning("Not enough annual observations for forecasting.")
+        else:
+            st.write("Selected model:", forecast_result["selected_model"])
+            st.dataframe(
+                forecast_result["forecast"],
+                use_container_width=True,
+                hide_index=True,
+            )
+            st.info(forecast_result["interpretation"])
 
     with tab3:
         st.subheader("Model performance")
-        st.info(
-            "Baseline and candidate model evaluation metrics, such as "
-            "MAE and RMSE, will appear here after validation."
-        )
-
-    # Integration point for stat_forecasting.py:
-    # Prepare the selected annual series and call the forecasting functions.
-    # Display the returned tables, metrics, and forecast values here.
+        validation = rolling_origin_validation(annual_data, test_size=5)
+        if validation is None:
+            st.warning("Not enough annual observations for model validation.")
+        else:
+            error_table = pd.DataFrame([
+                {
+                    "model": "Last Value Baseline",
+                    **validation["baseline_errors"],
+                },
+                {
+                    "model": "Holt Linear Trend",
+                    **validation["holt_errors"],
+                },
+            ])
+            st.dataframe(
+                error_table,
+                use_container_width=True,
+                hide_index=True,
+            )
 
     show_footer()
 
