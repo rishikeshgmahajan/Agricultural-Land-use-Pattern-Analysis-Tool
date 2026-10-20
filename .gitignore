@@ -10,3 +10,4 @@
 # Ignore the exploratory data analysis output directory
 eda_outputs/
 
+prev/
