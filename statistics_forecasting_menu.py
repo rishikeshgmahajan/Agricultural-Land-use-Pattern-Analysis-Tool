@@ -1,554 +1,186 @@
-from terminal_app import *
-from stat_forecasting import *
+"""Console menus for statistical analysis and forecasting."""
 
-# METRIC SELECTION
-def select_metric(annual_data):
+import pandas as pd
 
-    metrics = [
-        metric
-        for metric in annual_data["land_use_metrics"]
-        .dropna()
-        .drop_duplicates()
-        .sort_values()
-        .tolist()
-    ]
+import stat_forecasting as sf
 
-    if not metrics:
-        print("No metrics are available.")
+ASCII_UI = str.maketrans({
+    "╭": "+", "╮": "+", "╰": "+", "╯": "+", "─": "-", "│": "|",
+    "═": "=", "↩": "<-", "▸": ">",
+})
+
+
+def _print_line(text=""):
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        print(str(text).translate(ASCII_UI))
+
+
+def _header(title):
+    width = 66
+    _print_line("")
+    _print_line("╭" + "─" * (width - 2) + "╮")
+    _print_line("│ " + title.center(width - 4) + " │")
+    _print_line("╰" + "─" * (width - 2) + "╯")
+
+
+def _show_options(options):
+    for key, label in options:
+        arrow = "↩" if key == "0" else "▸"
+        _print_line(f"  {key}  {arrow} {label}")
+
+
+def _ask(path):
+    return input(f"\n{path} > Enter choice: ").strip()
+
+
+def _ask_year(prompt, valid_years, default):
+    """Ask for a year; Enter keeps the default."""
+    if not valid_years:
         return None
-
-    subheader("SELECT LAND-USE METRIC")
-
-    show_numbered_list(metrics)
-
-    print("0. Back")
-
-    choice = input("\nEnter choice: ").strip()
-
-    if choice == "0":
-        return None
-
-    if not choice.isdigit():
-        print("Invalid choice.")
-        return None
-
-    number = int(choice)
-
-    if number < 1 or number > len(metrics):
-        print("Invalid choice.")
-        return None
-
-    return metrics[number - 1]
-
-
-def get_metric_series(annual_data, metric):
-
-    metric_data = annual_data[
-        annual_data["land_use_metrics"] == metric
-    ][["start_year", "area"]].copy()
-
-    metric_data = metric_data.rename(
-        columns={
-            "start_year": "year",
-            "area": "value",
-        }
-    )
-
-    return metric_data.sort_values("year").reset_index(drop=True)
-
-
-# STATISTICAL ANALYSIS
-def statistical_analysis_menu(annual_data):
-
     while True:
+        answer = input(f"{prompt} (Enter = {default}): ").strip()
+        if not answer:
+            return default
+        if answer.isdigit() and int(answer) in valid_years:
+            return int(answer)
+        _print_line(f"Please enter a year between {min(valid_years)} and {max(valid_years)}.")
 
-        header("STATISTICAL ANALYSIS")
 
-        metric = select_metric(annual_data)
+def _pause():
+    input("\nPress Enter to continue...")
 
-        if metric is None:
+
+ 
+# Statistical analysis menu
+ 
+def _choose_states(cleaned_data):
+    counts = sf.eligible_states(cleaned_data)
+    top = counts.head(15)
+    if top.empty:
+        _print_line("No states have enough valid district data for comparison.")
+        return None
+
+    _print_line("\nStates with the most valid districts (latest usable year):")
+    for number, (state, districts) in enumerate(top.items(), start=1):
+        _print_line(f"  {number:>2}  {state} ({districts} districts)")
+    _print_line("\nEnter 2 state numbers for a t-test, or 3 or more for ANOVA, separated by commas.")
+    answer = input("Press Enter to use the 4 largest states: ").strip()
+    if not answer:
+        return list(top.index[:4])
+    try:
+        numbers = [int(part.strip()) for part in answer.split(",")]
+    except ValueError:
+        _print_line("Please enter numbers separated by commas.")
+        return None
+    if len(set(numbers)) < 2 or any(number < 1 or number > len(top) for number in numbers):
+        _print_line("Choose at least two different numbers from the list.")
+        return None
+    return [top.index[number - 1] for number in dict.fromkeys(numbers)]
+
+
+def statistical_analysis_menu(cleaned_data, annual_data):
+    while True:
+        _header("STATISTICAL ANALYSIS")
+        _show_options([
+            ("1", "Descriptive statistics & state ranking"),
+            ("2", "Trend analysis"),
+            ("3", "Early vs later period comparison"),
+            ("4", "Year-to-year change analysis"),
+            ("5", "Correlation analysis"),
+            ("6", "State comparison (t-test / ANOVA)"),
+            ("0", "Back"),
+        ])
+        choice = _ask("Main Menu > Statistical Analysis")
+
+        if choice == "0":
             return
-
-        statistical_metric_menu(annual_data, metric)
-
-
-def statistical_metric_menu(annual_data, metric):
-
-    while True:
-
-        subheader(metric.upper())
-
-        print("1. Descriptive Statistics")
-        print("2. Trend Analysis")
-        print("3. Year-over-Year Changes")
-        print("4. Period Comparison")
-        print("5. Correlation Analysis")
-        print("0. Back")
-
-        choice = input("\nEnter choice: ").strip()
-
-        series = get_metric_series(annual_data, metric)
-
-        if choice == "1":
-            show_descriptive_statistics(series)
-
+        elif choice == "1":
+            sf.descriptive_statistics(cleaned_data, annual_data)
         elif choice == "2":
-            show_trend_analysis(series)
-
+            sf.trend_analysis(cleaned_data)
         elif choice == "3":
-            show_yearly_changes(series)
-
+            years = sf.usable_years(sf.district_metric_table(cleaned_data))
+            if not years:
+                _print_line("Not enough valid district data to compare years.")
+                _pause()
+                continue
+            early = _ask_year("Early year (start of agricultural year)", years, years[0])
+            late = _ask_year("Later year", years, years[-1])
+            if early is None or late is None:
+                _print_line("No usable years were found.")
+            elif early >= late:
+                _print_line("The later year must be after the early year.")
+                _pause()
+                continue
+            else:
+                sf.period_comparison(cleaned_data, early, late)
         elif choice == "4":
-            show_period_comparison(series)
-
+            sf.year_to_year_change(cleaned_data, annual_data)
         elif choice == "5":
-            show_correlation_analysis(annual_data, metric)
-
-        elif choice == "0":
-            return
-
+            sf.correlation_analysis(cleaned_data)
+        elif choice == "6":
+            states = _choose_states(cleaned_data)
+            if states:
+                sf.compare_states(cleaned_data, states)
         else:
-            print("Invalid choice. Please select a valid option.")
+            _print_line("Please select one of the listed options.")
+            continue
+        _pause()
 
-# DESCRIPTIVE STATISTICS
-def show_descriptive_statistics(series):
 
-    subheader("DESCRIPTIVE STATISTICS")
-
-    result = descriptive_summary(series)
-
-    print(f"Observations        : {result['observations']}")
-    print(f"Mean                : {result['mean']:,.2f}")
-    print(f"Median              : {result['median']:,.2f}")
-    print(f"Minimum             : {result['minimum']:,.2f}")
-    print(f"Maximum             : {result['maximum']:,.2f}")
-    print(f"Standard Deviation  : {result['standard_deviation']:,.2f}")
-    print(f"First Year          : {result['first_year']}")
-    print(f"Last Year           : {result['last_year']}")
-
-    print("\nInterpretation:")
-
-    interpretation = interpret_descriptive_summary(result)
-
-    print(interpretation)
-
-# TREND ANALYSIS
-def show_trend_analysis(series):
-
-    subheader("TREND ANALYSIS")
-
-    result = analyze_trend(series)
-
-    print(f"Slope          : {result['slope']:,.2f}")
-    print(f"Intercept      : {result['intercept']:,.2f}")
-    print(f"R²             : {result['r_squared']:.4f}")
-    print(f"P-value        : {result['p_value']:.6f}")
-    print(f"Standard Error : {result['standard_error']:,.2f}")
-    print(f"Observations   : {result['observations']}")
-
-    print("\nInterpretation:")
-
-    interpretation = interpret_trend(result)
-
-    print(interpretation["summary"])
-
-# YEAR-OVER-YEAR CHANGE
-def show_yearly_changes(series):
-
-    subheader("YEAR-OVER-YEAR CHANGES")
-
-    # Calculate yearly changes
-    result = calculate_yearly_change(series)
-
-    if result.empty:
-
-        print("Year-over-year changes could not be calculated.")
-
+ 
+# Forecasting menu
+ 
+def forecasting_menu(cleaned_data, annual_data=None):
+    try:
+        series, panel_states = sf.build_intensity_series(cleaned_data)
+    except ValueError as error:
+        _print_line(f"Cannot build the forecasting series: {error}")
+        _pause()
         return
-
-    # Show the latest 10 years
-    print(
-        result[
-            [
-                "year",
-                "value",
-                "change",
-                "percentage_change"
-            ]
-        ]
-        .tail(10)
-        .to_string(index=False)
-    )
-
-    # Find largest increase and decrease
-    interpretation = interpret_yearly_changes(series)
-
-    if interpretation is None:
-
-        print("\nNo year-over-year changes are available.")
-
-        return
-
-    print("\nLargest Increase")
-
-    print(
-        f"Year        : "
-        f"{interpretation['largest_increase_year']}"
-    )
-
-    print(
-        f"Change      : "
-        f"{interpretation['largest_increase']:,.2f}"
-    )
-
-    print(
-        f"Percentage   : "
-        f"{interpretation['largest_increase_percentage']:.2f}%"
-    )
-
-    print("\nLargest Decrease")
-
-    print(
-        f"Year        : "
-        f"{interpretation['largest_decrease_year']}"
-    )
-
-    print(
-        f"Change      : "
-        f"{interpretation['largest_decrease']:,.2f}"
-    )
-
-    print(
-        f"Percentage   : "
-        f"{interpretation['largest_decrease_percentage']:.2f}%"
-    )
-
-    print("\nInterpretation:")
-
-    print(interpretation["summary"])
-
-# PERIOD COMPARISON
-def show_period_comparison(series):
-
-    subheader("EARLY PERIOD VS LATER PERIOD")
-
-    result = compare_period_trends(series)
-
-    if result is None:
-        print(
-            "There are not enough yearly observations "
-            "for this comparison."
-        )
-        return
-
-    print(
-        f"First Period  : "
-        f"{result['first_period'][0]}–"
-        f"{result['first_period'][1]}"
-    )
-
-    print(
-        f"Second Period : "
-        f"{result['second_period'][0]}–"
-        f"{result['second_period'][1]}"
-    )
-
-    print(
-        f"First Mean    : "
-        f"{result['first_mean']:,.2f}"
-    )
-
-    print(
-        f"Second Mean   : "
-        f"{result['second_mean']:,.2f}"
-    )
-
-    print(
-        f"Difference    : "
-        f"{result['difference']:,.2f}"
-    )
-
-    print(
-        f"Percentage Change : "
-        f"{result['percentage_change']:.2f}%"
-    )
-
-    print("\nInterpretation:")
-
-    print(interpret_period_comparison(result))
-
-
-# CORRELATION ANALYSIS
-def show_correlation_analysis(annual_data, metric):
-
-    subheader("CORRELATION ANALYSIS")
-
-    metric_data = annual_data[
-        annual_data["land_use_metrics"] == metric
-    ].copy()
-
-    numeric_columns = (
-        metric_data
-        .select_dtypes(include="number")
-        .columns
-        .tolist()
-    )
-
-    # Do not use year for correlation selection
-    numeric_columns = [
-        column
-        for column in numeric_columns
-        if column != "start_year"
-    ]
-
-    if len(numeric_columns) < 2:
-
-        print(
-            "There are not enough numerical variables "
-            "for correlation analysis."
-        )
-
-        return
-
-    print("Available variables:")
-
-    for number, column in enumerate(numeric_columns, start=1):
-        print(f"{number}. {column}")
-
-    print("0. Back")
-
-    first_choice = input("\nSelect first variable: ").strip()
-
-    if first_choice == "0":
-        return
-
-    if not first_choice.isdigit():
-        print("Invalid choice.")
-        return
-
-    first_number = int(first_choice)
-
-    if first_number < 1 or first_number > len(numeric_columns):
-        print("Invalid choice.")
-        return
-
-    second_choice = input("Select second variable: ").strip()
-
-    if second_choice == "0":
-        return
-
-    if not second_choice.isdigit():
-        print("Invalid choice.")
-        return
-
-    second_number = int(second_choice)
-
-    if second_number < 1 or second_number > len(numeric_columns):
-        print("Invalid choice.")
-        return
-
-    first_variable = numeric_columns[first_number - 1]
-    second_variable = numeric_columns[second_number - 1]
-
-    if first_variable == second_variable:
-
-        print("Please select two different variables.")
-
-        return
-
-    result = analyze_correlation(
-        metric_data,
-        first_variable,
-        second_variable
-    )
-
-    if result is None:
-
-        print(
-            "Not enough valid observations "
-            "for correlation analysis."
-        )
-
-        return
-
-    print()
-    print(f"Variable 1   : {first_variable}")
-    print(f"Variable 2   : {second_variable}")
-    print(f"Correlation  : {result['correlation']:.4f}")
-    print(f"P-value      : {result['p_value']:.6f}")
-    print(f"Observations : {result['observations']}")
-
-    print("\nInterpretation:")
-
-    print(interpret_correlation(result))
-
-
-# FORECASTING
-def forecasting_menu(annual_data):
 
     while True:
+        _header("FORECASTING")
+        _print_line(f"Series: cropping intensity of {len(panel_states)} states passing the 80%-125% Net Area Sown stability screen")
+        _show_options([
+            ("1", "Time series object & subset"),
+            ("2", "Stationarity test (ADF)"),
+            ("3", "Smoothing (moving average)"),
+            ("4", "Differencing"),
+            ("5", "ARIMA model & forecast"),
+            ("0", "Back"),
+        ])
+        choice = _ask("Main Menu > Forecasting")
 
-        header("FORECASTING")
-
-        metric = select_metric(annual_data)
-
-        if metric is None:
+        if choice == "0":
             return
-
-        forecasting_metric_menu(annual_data, metric)
-
-
-def forecasting_metric_menu(annual_data, metric):
-
-    while True:
-
-        subheader(metric.upper())
-
-        print("1. Model Evaluation")
-        print("2. Forecast Future Years")
-        print("0. Back")
-
-        choice = input("\nEnter choice: ").strip()
-
-        series = get_metric_series(annual_data, metric)
-
-        if choice == "1":
-
-            show_model_evaluation(series)
-
+        elif choice == "1":
+            years = list(series.index.year)
+            start = _ask_year("Subset start year", years, years[len(years) // 2])
+            if start is not None:
+                sf.time_series_overview(series, start)
         elif choice == "2":
-
-            show_forecast(series)
-
-        elif choice == "0":
-
-            return
-
+            sf.stationarity_test(series)
+        elif choice == "3":
+            sf.smoothing_chart(series)
+        elif choice == "4":
+            sf.differencing_analysis(series)
+        elif choice == "5":
+            answer = input("Forecast horizon in years (Enter = 5): ").strip()
+            horizon = int(answer) if answer.isdigit() and 1 <= int(answer) <= 10 else 5
+            sf.arima_forecast(series, horizon=horizon)
         else:
-
-            print("Invalid choice.")
-
-
-# MODEL EVALUATION
-def show_model_evaluation(series):
-
-    subheader("MODEL EVALUATION")
-
-    result = rolling_origin_validation(
-        series,
-        test_size=5,
-    )
-
-    if result is None:
-        print(
-            "Not enough historical observations "
-            "for model validation."
-        )
-        return
-
-    print(
-        f"Training Period : "
-        f"{result['train_start']}–{result['train_end']}"
-    )
-
-    print(
-        f"Validation Period : "
-        f"{result['test_start']}–{result['test_end']}"
-    )
-
-    print("\nLast-Value Baseline")
-
-    print(
-        f"MAE  : "
-        f"{result['baseline_errors']['mae']:,.2f}"
-    )
-
-    print(
-        f"RMSE : "
-        f"{result['baseline_errors']['rmse']:,.2f}"
-    )
-
-    print(
-        f"MAPE : "
-        f"{result['baseline_errors']['mape']:.2f}%"
-    )
-
-    print("\nHolt Linear Trend")
-
-    print(
-        f"MAE  : "
-        f"{result['holt_errors']['mae']:,.2f}"
-    )
-
-    print(
-        f"RMSE : "
-        f"{result['holt_errors']['rmse']:,.2f}"
-    )
-
-    print(
-        f"MAPE : "
-        f"{result['holt_errors']['mape']:.2f}%"
-    )
-
-    print("\nInterpretation:")
-
-    print(interpret_model_evaluation(result))
+            _print_line("Please select one of the listed options.")
+            continue
+        _pause()
 
 
-# FORECAST
-def show_forecast(series):
+if __name__ == "__main__":
+    from data_preprocessor import create_member2_dataset, create_member3_dataset
 
-    subheader("FUTURE FORECAST")
-
-    print("Forecast horizon:")
-
-    print("1. 3 years")
-    print("2. 5 years")
-    print("3. 10 years")
-    print("0. Back")
-
-    choice = input("\nEnter choice: ").strip()
-
-    horizons = {
-        "1": 3,
-        "2": 5,
-        "3": 10,
-    }
-
-    if choice == "0":
-        return
-
-    if choice not in horizons:
-        print("Invalid choice.")
-        return
-
-    periods = horizons[choice]
-
-    result = forecast_annual(
-        series,
-        periods=periods,
-    )
-
-    if result is None:
-        print(
-            "Not enough historical observations "
-            "for forecasting."
-        )
-        return
-
-    subheader("FORECAST RESULTS")
-
-    print(
-        f"Selected Model : "
-        f"{result['selected_model']}"
-    )
-
-    print()
-
-    print(
-        result["forecast"].to_string(index=False)
-    )
-
-    print("\nInterpretation:")
-
-    print(result["interpretation"])
+    _print_line("Loading project data...")
+    cleaned = create_member2_dataset()
+    annual = create_member3_dataset()
+    statistical_analysis_menu(cleaned, annual)
