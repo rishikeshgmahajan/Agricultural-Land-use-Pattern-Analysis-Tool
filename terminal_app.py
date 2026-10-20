@@ -2,6 +2,7 @@ import os
 
 import pandas as pd
 from data_preprocessor import create_member2_dataset, create_member3_dataset
+from statistics_forecasting_menu import * 
 
 ASCII_UI = str.maketrans({
     "╭": "+",
@@ -537,7 +538,7 @@ def main():
             ("5", "State / District Analysis"),
             ("6", "About Project"),
             ("0", "Exit"),
-        ])
+        ]) 
 
         choice = _input_choice("Main Menu")
 
@@ -550,14 +551,11 @@ def main():
             eda_menu(cleaned_data, annual_data)
 
         elif choice == "3":
-
-            #statistical_analysis_menu(annual_data)
-            print("Statistical Analysis work will be available soon.")
+            statistical_analysis_menu(cleaned_data, annual_data)
 
         elif choice == "4":
-
-            #forecasting_menu(annual_data)
-            print("Forecasting work will be available soon.")
+            forecasting_menu(cleaned_data, annual_data)
+    
 
         elif choice == "5":
 
