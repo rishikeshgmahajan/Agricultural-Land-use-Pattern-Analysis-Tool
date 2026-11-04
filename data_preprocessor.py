@@ -7,9 +7,6 @@ def preprocess_data(df: pd.DataFrame) -> pd.DataFrame:
     data.columns = data.columns.str.strip().str.lower()
 
     required_cols = {"year", "state_name", "land_use_metrics", "area"}
-    missing_cols = required_cols - set(data.columns)
-    if missing_cols:
-        raise ValueError(f"Missing required columns: {', '.join(sorted(missing_cols))}")
 
     text_columns = [
         "state_name",
@@ -25,37 +22,21 @@ def preprocess_data(df: pd.DataFrame) -> pd.DataFrame:
             data[col] = data[col].replace({"nan": None, "NaN": None, "": None})
 
     data["state_name"] = data["state_name"].fillna("Unknown")
-    if "district_name" in data.columns:
-        data["district_name"] = data["district_name"].fillna("Unknown")
+    data["district_name"] = data["district_name"].fillna("Unknown")
 
     metric_col = data["land_use_metrics"]
-    sub_col = (
-        data["area_sub_classification"]
-        if "area_sub_classification" in data.columns
-        else pd.Series(None, index=data.index)
-    )
-    class_col = (
-        data["area_classification"]
-        if "area_classification" in data.columns
-        else pd.Series(None, index=data.index)
-    )
+    sub_col = data.get("area_sub_classification", pd.Series(index=data.index, dtype=object))
+    class_col = data.get("area_classification", pd.Series(index=data.index, dtype=object))
 
-    data["category"] = (
-        metric_col.fillna(sub_col).fillna(class_col).fillna("Unspecified")
-    )
+    data["category"] = metric_col.fillna(sub_col).fillna(class_col).fillna("Unknown")
 
-    data["start_year"] = (
-        data["year"].astype(str).str.split("-").str[0].str.extract(r"(\d{4})")[0]
-    )
-    data["start_year"] = pd.to_numeric(data["start_year"], errors="coerce").astype(
-        "Int64"
-    )
+    data["start_year"] = data["year"].astype(str).str.split("-").str[0].str.extract(r"(\d{4})")[0]
+    
+    data["start_year"] = pd.to_numeric(data["start_year"], errors="coerce").astype("Int64")
 
     for code_col in ["state_code", "district_code"]:
         if code_col in data.columns:
-            data[code_col] = pd.to_numeric(data[code_col], errors="coerce").astype(
-                "Int64"
-            )
+            data[code_col] = pd.to_numeric(data[code_col], errors="coerce").astype("Int64")
 
     data["area"] = pd.to_numeric(data["area"], errors="coerce")
     data.loc[data["area"] < 0, "area"] = None
